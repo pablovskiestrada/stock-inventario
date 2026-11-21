@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Productos · Stock App{% endblock %}
+{% block content %}
+<h1>Productos</h1>
+
+{% if categories %}
+<form class="form-grid" hx-post="/products" hx-include="#filters" hx-target="#product-list" hx-swap="innerHTML"
+      hx-on::after-request="if (event.detail.successful) this.reset()">
+  {% set product = none %}
+  {% include "products/_fields.html" %}
+  <button type="submit">Agregar</button>
+  <div id="form-error" class="error" role="alert"></div>
+  <div id="form-notice" role="status"></div>
+</form>
+{% else %}
+<p class="empty">Antes de cargar productos, <a href="/categories">creá una categoría</a>.</p>
+{% endif %}
+
+<form id="filters" class="form-grid" hx-get="/products" hx-target="#product-list" hx-swap="innerHTML"
+      hx-trigger="change" hx-push-url="true">
+  <label>Categoría
+    <select name="category">
+      <option value="">Todas</option>
+      {% for category in categories %}
+      <option value="{{ category.id }}"{% if filter_category == category.id %} selected{% endif %}>{{ category.name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Estado
+    <select name="state">
+      <option value="active"{% if filter_state == "active" %} selected{% endif %}>Activos</option>
+      <option value="inactive"{% if filter_state == "inactive" %} selected{% endif %}>Inactivos</option>
+      <option value="all"{% if filter_state == "all" %} selected{% endif %}>Todos</option>
+    </select>
+  </label>
+</form>
+
+<div id="list-error" class="error" role="alert"></div>
+
+<div id="product-list">
+  {% include "products/_list.html" %}
+</div>
+{% endblock %}

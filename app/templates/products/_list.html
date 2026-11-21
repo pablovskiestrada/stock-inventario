@@ -1,0 +1,17 @@
+{% if products %}
+<table>
+  <thead>
+    <tr><th>SKU</th><th>Nombre</th><th>Categoría</th><th>Costo</th><th>Venta</th><th>Mín.</th><th>Estado</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for product in products %}
+      {% set warning = false %}
+      {% include "products/_row.html" %}
+    {% endfor %}
+  </tbody>
+</table>
+{% elif not has_any_product %}
+<p class="empty">Todavía no hay productos. Agregá el primero.</p>
+{% else %}
+<p class="empty">Ningún producto coincide con los filtros.</p>
+{% endif %}

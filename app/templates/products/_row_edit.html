@@ -1,0 +1,12 @@
+<tr id="product-{{ product.id }}">
+  <td colspan="8">
+    <form class="form-grid" hx-put="/products/{{ product.id }}"
+          hx-target="#product-{{ product.id }}" hx-swap="outerHTML">
+      {% include "products/_fields.html" %}
+      <button type="submit">Guardar</button>
+      <button type="button" hx-get="/products/{{ product.id }}"
+              hx-target="#product-{{ product.id }}" hx-swap="outerHTML">Cancelar</button>
+      <span id="row-error-{{ product.id }}" class="error" role="alert"></span>
+    </form>
+  </td>
+</tr>

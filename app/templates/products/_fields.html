@@ -1,0 +1,13 @@
+<label>SKU <input type="text" name="sku" maxlength="50" required value="{{ product.sku if product else '' }}"></label>
+<label>Nombre <input type="text" name="name" maxlength="150" required value="{{ product.name if product else '' }}"></label>
+<label>Categoría
+  <select name="category_id" required>
+    <option value="">Elegí una categoría</option>
+    {% for category in categories %}
+    <option value="{{ category.id }}"{% if product and product.category_id == category.id %} selected{% endif %}>{{ category.name }}</option>
+    {% endfor %}
+  </select>
+</label>
+<label>Precio de costo <input type="text" name="cost_price" inputmode="decimal" required value="{{ '{:.2f}'.format(product.cost_price) if product else '' }}"></label>
+<label>Precio de venta <input type="text" name="sale_price" inputmode="decimal" required value="{{ '{:.2f}'.format(product.sale_price) if product else '' }}"></label>
+<label>Stock mínimo <input type="number" name="min_stock" min="0" step="1" value="{{ product.min_stock if product else 0 }}"></label>

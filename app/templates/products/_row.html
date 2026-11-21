@@ -1,0 +1,24 @@
+<tr id="product-{{ product.id }}"{% if not product.is_active %} class="inactive"{% endif %}>
+  <td>{{ product.sku }}</td>
+  <td>
+    {{ product.name }}
+    {% if warning %}<div class="warning" role="status">Advertencia: el precio de venta es menor al costo.</div>{% endif %}
+  </td>
+  <td>{{ category_names.get(product.category_id, "") }}</td>
+  <td>{{ "{:.2f}".format(product.cost_price) }}</td>
+  <td>{{ "{:.2f}".format(product.sale_price) }}</td>
+  <td>{{ product.min_stock }}</td>
+  <td>{{ "Activo" if product.is_active else "Inactivo" }}</td>
+  <td>
+    <button type="button" hx-get="/products/{{ product.id }}/edit"
+            hx-target="#product-{{ product.id }}" hx-swap="outerHTML">Editar</button>
+    {% if product.is_active %}
+    <button type="button" hx-post="/products/{{ product.id }}/deactivate" hx-include="#filters"
+            hx-target="#product-list" hx-swap="innerHTML"
+            hx-confirm="¿Desactivar el producto «{{ product.name }}»?">Desactivar</button>
+    {% else %}
+    <button type="button" hx-post="/products/{{ product.id }}/activate" hx-include="#filters"
+            hx-target="#product-list" hx-swap="innerHTML">Reactivar</button>
+    {% endif %}
+  </td>
+</tr>

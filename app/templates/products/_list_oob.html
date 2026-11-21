@@ -1,0 +1,8 @@
+{% include "products/_list.html" %}
+<div id="form-error" class="error" role="alert" hx-swap-oob="true"></div>
+<div id="form-notice" role="status" hx-swap-oob="true">
+  {% if saved %}
+    Producto «{{ saved.name }}» guardado.
+    {% if warning %}<span class="warning">Advertencia: el precio de venta es menor al costo.</span>{% endif %}
+  {% endif %}
+</div>
