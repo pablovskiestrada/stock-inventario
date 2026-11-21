@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -222,24 +221,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
-=======
-# Python
-__pycache__/
-*.pyc
-.venv/
-venv/
 
-# Secretos y configuración local
-.env
-
-# Base de datos local
-*.db
-*.sqlite3
-
-# Herramientas
-.pytest_cache/
-.ruff_cache/
+# Proyecto
 .idea/
 .vscode/
 .DS_Store
->>>>>>> 089ddae (docs: agrega SPEC y CLAUDE.md iniciales)
+*.db
+*.sqlite3
