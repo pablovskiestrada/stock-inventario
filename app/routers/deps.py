@@ -13,21 +13,29 @@ from app.services.errors import (
     CategoryNotFoundError,
     DomainError,
     DuplicateCategoryNameError,
+    DuplicateSkuError,
+    ProductNotFoundError,
 )
+from app.services.product_service import ProductService
 
 
 def get_category_service(session: Annotated[Session, Depends(get_session)]) -> CategoryService:
     return CategoryService(CategoryRepository(session), ProductRepository(session))
 
 
+def get_product_service(session: Annotated[Session, Depends(get_session)]) -> ProductService:
+    return ProductService(ProductRepository(session), CategoryRepository(session))
+
+
 CategoryServiceDep = Annotated[CategoryService, Depends(get_category_service)]
+ProductServiceDep = Annotated[ProductService, Depends(get_product_service)]
 
 
 def http_status_for(exc: DomainError) -> int:
     """Traduce excepciones de dominio a códigos HTTP."""
-    if isinstance(exc, CategoryNotFoundError):
+    if isinstance(exc, CategoryNotFoundError | ProductNotFoundError):
         return 404
-    if isinstance(exc, DuplicateCategoryNameError | CategoryInUseError):
+    if isinstance(exc, DuplicateCategoryNameError | CategoryInUseError | DuplicateSkuError):
         return 409
     return 422
 

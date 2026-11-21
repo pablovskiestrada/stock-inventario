@@ -3,7 +3,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
-from app.routers import categories, category_views, health
+from app.routers import categories, category_views, health, products
 from app.routers.deps import domain_error_response
 from app.services.errors import DomainError
 from app.templating import BASE_DIR
@@ -21,6 +21,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(categories.router)
     app.include_router(category_views.router)
+    app.include_router(products.router)
     return app
 
 
