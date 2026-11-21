@@ -5,7 +5,7 @@ Un negocio chico necesita saber cuánto stock tiene de cada producto, registrar 
 
 ## Casos de uso (v1)
 1. Crear, editar y desactivar productos (SKU, nombre, categoría, precio de costo, precio de venta, stock mínimo).
-2. Gestionar categorías (crear, renombrar, listar).
+2. Gestionar categorías (crear, renombrar, listar, eliminar).
 3. Registrar movimientos de stock: entrada (IN), salida (OUT) y ajuste (ADJUSTMENT).
 4. Ver el stock actual de cada producto.
 5. Ver el historial de movimientos de un producto.
@@ -36,7 +36,7 @@ erDiagram
 
     CATEGORY {
         int id PK
-        string name UK
+        string name UK "único sin distinguir mayúsculas (RN11)"
         datetime created_at
         datetime updated_at
     }
@@ -71,8 +71,9 @@ erDiagram
 - RN6. Un producto con movimientos no se elimina, solo se desactiva (`is_active = false`).
 - RN7. No se pueden registrar movimientos sobre productos inactivos.
 - RN8. `cost_price` y `sale_price` >= 0. `min_stock` >= 0.
-- RN9. Una categoría con productos no se puede eliminar.
+- RN9. Una categoría con productos no se puede eliminar. (Rebanada 1a: punto de extensión `CategoryService._ensure_has_no_products`; se completa en 1b cuando exista `Product`.)
 - RN10. Un producto está "bajo mínimo" cuando `current_stock <= min_stock` y está activo.
+- RN11. El nombre de una categoría es obligatorio, se guarda sin espacios sobrantes y es único sin distinguir mayúsculas/minúsculas (`Ropa` = `ropa`). Se garantiza en el servicio y con un índice único sobre `lower(name)` en la base.
 
 ## Decisiones tomadas
 - Stock calculado desde movimientos (trazabilidad total). Si hay problemas de performance, se agrega una columna cacheada más adelante.
