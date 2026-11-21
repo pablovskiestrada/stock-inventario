@@ -1,0 +1,12 @@
+{% if categories %}
+<table>
+  <thead><tr><th>Nombre</th><th></th></tr></thead>
+  <tbody>
+    {% for category in categories %}
+      {% include "categories/_row.html" %}
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty">Todavía no hay categorías. Agregá la primera.</p>
+{% endif %}

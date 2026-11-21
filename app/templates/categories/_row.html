@@ -1,0 +1,10 @@
+<tr id="category-{{ category.id }}">
+  <td>{{ category.name }}</td>
+  <td>
+    <button type="button" hx-get="/categories/{{ category.id }}/edit"
+            hx-target="#category-{{ category.id }}" hx-swap="outerHTML">Renombrar</button>
+    <button type="button" hx-delete="/categories/{{ category.id }}"
+            hx-target="#category-{{ category.id }}" hx-swap="outerHTML"
+            hx-confirm="¿Eliminar la categoría «{{ category.name }}»?">Eliminar</button>
+  </td>
+</tr>

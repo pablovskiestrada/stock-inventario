@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Categorías · Stock App{% endblock %}
+{% block content %}
+<h1>Categorías</h1>
+
+<form hx-post="/categories" hx-target="#category-list" hx-swap="innerHTML"
+      hx-on::after-request="if (event.detail.successful) this.reset()">
+  <label>Nombre <input type="text" name="name" maxlength="100" required autofocus></label>
+  <button type="submit">Agregar</button>
+  <div id="form-error" class="error" role="alert"></div>
+</form>
+
+<div id="list-error" class="error" role="alert"></div>
+
+<div id="category-list">
+  {% include "categories/_list.html" %}
+</div>
+{% endblock %}

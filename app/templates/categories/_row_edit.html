@@ -1,0 +1,12 @@
+<tr id="category-{{ category.id }}">
+  <td colspan="2">
+    <form hx-put="/categories/{{ category.id }}"
+          hx-target="#category-{{ category.id }}" hx-swap="outerHTML">
+      <input type="text" name="name" value="{{ category.name }}" maxlength="100" required autofocus>
+      <button type="submit">Guardar</button>
+      <button type="button" hx-get="/categories/{{ category.id }}"
+              hx-target="#category-{{ category.id }}" hx-swap="outerHTML">Cancelar</button>
+      <span id="row-error-{{ category.id }}" class="error" role="alert"></span>
+    </form>
+  </td>
+</tr>
