@@ -39,7 +39,7 @@ CLAUDE.md
 ## Base de datos
 - Todo cambio de esquema va con migración Alembic. Nunca `create_all` en código de aplicación.
 - Restricciones en la base (PK, FK, NOT NULL, UNIQUE, CHECK), no solo en código.
-- Todas las tablas tienen `created_at` y `updated_at`.
+- Todas las tablas tienen `created_at`; `updated_at` solo en tablas mutables (`stock_movements` es inmutable, ver RN5).
 - Dinero: `Numeric(12, 2)` / `Decimal`. Nunca float.
 - Nombres de tablas en inglés, plural y snake_case (`products`, `stock_movements`).
 
