@@ -23,3 +23,47 @@ class CategoryInUseError(DomainError):
     def __init__(self, category_id: int) -> None:
         super().__init__("No se puede eliminar una categoría que tiene productos.")
         self.category_id = category_id
+
+
+class ProductNotFoundError(DomainError):
+    def __init__(self, product_id: int) -> None:
+        super().__init__(f"El producto {product_id} no existe.")
+        self.product_id = product_id
+
+
+class ProductSkuRequiredError(DomainError):
+    def __init__(self) -> None:
+        super().__init__("El SKU es obligatorio.")
+
+
+class ProductNameRequiredError(DomainError):
+    def __init__(self) -> None:
+        super().__init__("El nombre del producto es obligatorio.")
+
+
+class ProductFieldTooLongError(DomainError):
+    def __init__(self, label: str, max_length: int) -> None:
+        super().__init__(f"{label} no puede superar los {max_length} caracteres.")
+        self.max_length = max_length
+
+
+class DuplicateSkuError(DomainError):
+    def __init__(self, sku: str) -> None:
+        super().__init__(f"Ya existe un producto con el SKU «{sku}».")
+        self.sku = sku
+
+
+class InvalidProductCategoryError(DomainError):
+    def __init__(self, category_id: int) -> None:
+        super().__init__(f"La categoría {category_id} no existe.")
+        self.category_id = category_id
+
+
+class InvalidPriceError(DomainError):
+    def __init__(self, label: str) -> None:
+        super().__init__(f"{label} debe ser un importe mayor o igual a 0, con hasta 2 decimales.")
+
+
+class InvalidMinStockError(DomainError):
+    def __init__(self) -> None:
+        super().__init__("El stock mínimo debe ser un entero mayor o igual a 0.")
