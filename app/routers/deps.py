@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_session
 from app.repositories.category_repository import CategoryRepository
+from app.repositories.product_repository import ProductRepository
 from app.services.category_service import CategoryService
 from app.services.errors import (
     CategoryInUseError,
@@ -16,7 +17,7 @@ from app.services.errors import (
 
 
 def get_category_service(session: Annotated[Session, Depends(get_session)]) -> CategoryService:
-    return CategoryService(CategoryRepository(session))
+    return CategoryService(CategoryRepository(session), ProductRepository(session))
 
 
 CategoryServiceDep = Annotated[CategoryService, Depends(get_category_service)]

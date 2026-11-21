@@ -1,8 +1,12 @@
+from decimal import Decimal
+
 import pytest
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.models.product import Product
 from app.repositories.category_repository import CategoryRepository
+from app.repositories.product_repository import ProductRepository
 from app.services.category_service import CategoryService
 from app.services.errors import (
     CategoryInUseError,
@@ -14,7 +18,21 @@ from app.services.errors import (
 
 @pytest.fixture
 def service(session: Session) -> CategoryService:
-    return CategoryService(CategoryRepository(session))
+    return CategoryService(CategoryRepository(session), ProductRepository(session))
+
+
+def _add_product(session: Session, category_id: int, *, is_active: bool = True) -> None:
+    session.add(
+        Product(
+            sku=f"SKU-{category_id}-{is_active}",
+            name="Remera",
+            category_id=category_id,
+            cost_price=Decimal("10.00"),
+            sale_price=Decimal("20.00"),
+            is_active=is_active,
+        )
+    )
+    session.commit()
 
 
 def test_create_trims_name(service: CategoryService) -> None:
@@ -89,20 +107,27 @@ def test_delete_category_without_products(service: CategoryService) -> None:
     assert service.list() == []
 
 
+@pytest.mark.parametrize("is_active", [True, False])
 def test_delete_blocked_when_category_has_products(
-    service: CategoryService, monkeypatch: pytest.MonkeyPatch
+    service: CategoryService, session: Session, is_active: bool
 ) -> None:
-    # TEMPORAL: en la rebanada 1b este test se reemplaza por uno real con Product
-    # (crear un producto en la categoría y verificar que delete lanza CategoryInUseError).
+    """RN9: bloquea con productos activos o inactivos."""
     category = service.create("Ropa")
-
-    def fake_ensure(category_id: int) -> None:
-        raise CategoryInUseError(category_id)
-
-    monkeypatch.setattr(service, "_ensure_has_no_products", fake_ensure)
+    _add_product(session, category.id, is_active=is_active)
 
     with pytest.raises(CategoryInUseError):
         service.delete(category.id)
+    assert [c.name for c in service.list()] == ["Ropa"]
+
+
+def test_delete_only_checks_products_of_that_category(
+    service: CategoryService, session: Session
+) -> None:
+    used = service.create("Ropa")
+    empty = service.create("Bazar")
+    _add_product(session, used.id)
+
+    service.delete(empty.id)
     assert [c.name for c in service.list()] == ["Ropa"]
 
 

@@ -2,7 +2,9 @@ from collections.abc import Sequence
 
 from app.models.category import Category
 from app.repositories.category_repository import CategoryRepository
+from app.repositories.product_repository import ProductRepository
 from app.services.errors import (
+    CategoryInUseError,
     CategoryNameRequiredError,
     CategoryNotFoundError,
     DuplicateCategoryNameError,
@@ -10,8 +12,11 @@ from app.services.errors import (
 
 
 class CategoryService:
-    def __init__(self, repository: CategoryRepository) -> None:
+    def __init__(
+        self, repository: CategoryRepository, product_repository: ProductRepository
+    ) -> None:
         self._repo = repository
+        self._products = product_repository
 
     def list(self) -> Sequence[Category]:
         return self._repo.list_all()
@@ -48,14 +53,12 @@ class CategoryService:
         self._repo.commit()
 
     def _ensure_has_no_products(self, category_id: int) -> None:
-        """RN9: una categoría con productos no se puede eliminar.
+        """RN9: una categoría con productos (activos o inactivos) no se puede eliminar.
 
-        PUNTO DE EXTENSIÓN (rebanada 1b): Product todavía no existe, así que hoy
-        no hace nada. Cuando exista, consultar
-        ``product_repository.count_by_category(category_id)`` y lanzar
-        ``CategoryInUseError(category_id)`` si es > 0. La FK
-        ``products.category_id`` (sin ON DELETE CASCADE) será la segunda defensa.
+        La FK ``products.category_id`` (sin ON DELETE CASCADE) es la segunda defensa.
         """
+        if self._products.count_by_category(category_id) > 0:
+            raise CategoryInUseError(category_id)
 
     @staticmethod
     def _normalize_name(name: str) -> str:
