@@ -1,6 +1,6 @@
 from collections.abc import Collection
 from decimal import Decimal
-from typing import Any
+from typing import Any, NamedTuple
 
 from sqlalchemy import ColumnElement, case, func, select, type_coerce
 from sqlalchemy.orm import Session
@@ -28,6 +28,15 @@ def _stock_sum() -> ColumnElement[Decimal]:
     Los ajustes ya traen su signo (RN3), así que suman tal cual. Sin movimientos da 0.
     """
     return type_coerce(func.coalesce(func.sum(_signed_quantity()), 0), Quantity())
+
+
+class HistoryRow(NamedTuple):
+    """Un movimiento del historial con lo que calcula SQL: efecto con signo, saldo y total."""
+
+    movement: StockMovement
+    signed_quantity: Decimal
+    balance: Decimal
+    total: int
 
 
 class StockMovementRepository:
@@ -79,6 +88,34 @@ class StockMovementRepository:
             .group_by(StockMovement.product_id)
         )
         return {product_id: stock for product_id, stock in self._session.execute(stmt)}
+
+    def history(self, product_id: int, limit: int) -> list[HistoryRow]:
+        """RN30: los últimos `limit` movimientos del producto, del más reciente al más antiguo.
+
+        Una sola sentencia. Las ventanas se evalúan antes del `LIMIT`, así que `balance` (stock
+        resultante tras el movimiento) y `total` cubren todo el historial y no solo las filas
+        devueltas. El orden es el de inserción (`id`); la fecha no interviene. El signo sale de
+        `_signed_quantity()` y la coerción a `Quantity` es la de `_stock_sum()`.
+        """
+        signed = _signed_quantity()
+        running = func.sum(signed).over(
+            partition_by=StockMovement.product_id,
+            order_by=StockMovement.id,
+            rows=(None, 0),  # desde el primer movimiento hasta el actual
+        )
+        total = func.count().over(partition_by=StockMovement.product_id)
+        stmt = (
+            select(
+                StockMovement,
+                type_coerce(signed, Quantity()).label("signed_quantity"),
+                type_coerce(running, Quantity()).label("balance"),
+                total.label("total"),
+            )
+            .where(StockMovement.product_id == product_id)
+            .order_by(StockMovement.id.desc())
+            .limit(limit)
+        )
+        return [HistoryRow(*row) for row in self._session.execute(stmt)]
 
     def commit(self) -> None:
         self._session.commit()

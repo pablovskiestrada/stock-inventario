@@ -1,11 +1,12 @@
 from collections.abc import Collection
+from dataclasses import dataclass
 from decimal import Decimal
 
 from app.models.movement_type import AdjustmentReason, MovementType
 from app.models.product import Product
 from app.models.stock_movement import StockMovement
 from app.repositories.product_repository import ProductRepository
-from app.repositories.stock_movement_repository import StockMovementRepository
+from app.repositories.stock_movement_repository import HistoryRow, StockMovementRepository
 from app.services.errors import (
     AdjustmentReasonRequiredError,
     InactiveProductError,
@@ -25,6 +26,21 @@ from app.services.quantity import validate_quantity
 
 NOTE_MAX_LENGTH = 500
 REFERENCE_MAX_LENGTH = 100
+HISTORY_LIMIT = 200  # RN30
+
+
+@dataclass(frozen=True)
+class MovementHistory:
+    """Historial de un producto (RN30): las filas mostradas y el total de su libro mayor."""
+
+    product: Product
+    entries: tuple[HistoryRow, ...]
+    total: int
+    limit: int
+
+    @property
+    def truncated(self) -> bool:
+        return self.total > self.limit
 
 
 class StockMovementService:
@@ -45,6 +61,13 @@ class StockMovementService:
         """RN24: una sola consulta agrupada. Los productos sin movimientos valen 0."""
         found = self._repo.current_stock_by_product(product_ids)
         return {product_id: found.get(product_id, Decimal(0)) for product_id in product_ids}
+
+    def history(self, product_id: int) -> MovementHistory:
+        """RN30: últimos `HISTORY_LIMIT` movimientos con su saldo; también para productos inactivos."""
+        product = self._get_product(product_id)
+        rows = self._repo.history(product_id, HISTORY_LIMIT)
+        total = rows[0].total if rows else 0
+        return MovementHistory(product, tuple(rows), total, HISTORY_LIMIT)
 
     def register_movement(
         self,
