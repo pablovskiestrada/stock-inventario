@@ -228,3 +228,6 @@ __marimo__/
 .DS_Store
 *.db
 *.sqlite3
+
+*.bak
+.mcp.json
