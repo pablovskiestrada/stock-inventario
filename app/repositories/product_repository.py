@@ -21,7 +21,8 @@ class ProductRepository:
         category_id: int,
         cost_price: Decimal,
         sale_price: Decimal,
-        min_stock: int,
+        unit: str,
+        min_stock: Decimal,
     ) -> Product:
         product = Product(
             sku=sku,
@@ -29,6 +30,7 @@ class ProductRepository:
             category_id=category_id,
             cost_price=cost_price,
             sale_price=sale_price,
+            unit=unit,
             min_stock=min_stock,
         )
         self._session.add(product)
@@ -64,13 +66,15 @@ class ProductRepository:
         category_id: int,
         cost_price: Decimal,
         sale_price: Decimal,
-        min_stock: int,
+        unit: str,
+        min_stock: Decimal,
     ) -> Product:
         product.sku = sku
         product.name = name
         product.category_id = category_id
         product.cost_price = cost_price
         product.sale_price = sale_price
+        product.unit = unit
         product.min_stock = min_stock
         self._flush_unique(sku)
         self._session.refresh(product)

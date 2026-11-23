@@ -35,7 +35,8 @@ def test_create_returns_201_with_normalized_data(client: TestClient) -> None:
     assert created["name"] == "Remera"
     assert created["cost_price"] == "19.99"
     assert created["sale_price"] == "0.10"
-    assert created["min_stock"] == 0
+    assert created["min_stock"] == "0.000"
+    assert created["unit"] == "UN"
     assert created["is_active"] is True
 
 
@@ -66,7 +67,10 @@ def test_create_unknown_category_returns_422(client: TestClient) -> None:
         {"cost_price": "-0.01"},
         {"sale_price": "1.005"},
         {"min_stock": -1},
-        {"min_stock": 1.5},
+        {"min_stock": 1.5},  # UN (por defecto) solo admite enteros
+        {"min_stock": "0.0001", "unit": "KG"},
+        {"unit": "XX"},
+        {"unit": "kg"},
     ],
 )
 def test_create_invalid_payload_returns_422(client: TestClient, overrides: dict[str, Any]) -> None:
@@ -98,7 +102,34 @@ def test_update_product(client: TestClient) -> None:
         json=_payload(category["id"], sku="B-2", name="Camisa", min_stock=4),
     )
     assert response.status_code == 200
-    assert (response.json()["sku"], response.json()["min_stock"]) == ("B-2", 4)
+    assert (response.json()["sku"], response.json()["min_stock"]) == ("B-2", "4.000")
+
+
+def test_create_with_decimal_unit_and_min_stock(client: TestClient) -> None:
+    category = _category(client)
+    created = _create(client, category["id"], unit="KG", min_stock="1.5")
+    assert (created["unit"], created["min_stock"]) == ("KG", "1.500")
+    assert client.get(f"/api/products/{created['id']}").json()["min_stock"] == "1.500"
+
+
+def test_create_decimal_min_stock_with_un_returns_422_with_message(client: TestClient) -> None:
+    category = _category(client)
+    response = client.post(
+        "/api/products", json=_payload(category["id"], unit="UN", min_stock="1.5")
+    )
+    assert response.status_code == 422
+    assert "solo admite cantidades enteras" in response.json()["detail"]
+
+
+def test_update_changing_unit_revalidates_min_stock(client: TestClient) -> None:
+    category = _category(client)
+    created = _create(client, category["id"], unit="KG", min_stock="1.5")
+    response = client.put(
+        f"/api/products/{created['id']}",
+        json=_payload(category["id"], unit="UN", min_stock="1.5"),
+    )
+    assert response.status_code == 422
+    assert client.get(f"/api/products/{created['id']}").json()["unit"] == "KG"  # no cambió
 
 
 def test_update_duplicate_sku_returns_409_and_unknown_returns_404(client: TestClient) -> None:

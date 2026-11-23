@@ -12,6 +12,7 @@ from app.services.errors import (
     InvalidMinStockError,
     InvalidPriceError,
     InvalidProductCategoryError,
+    InvalidUnitError,
     ProductFieldTooLongError,
     ProductNameRequiredError,
     ProductNotFoundError,
@@ -51,6 +52,7 @@ def test_create_trims_sku_and_name_and_applies_defaults(
     product = service.create(**_data(category, sku="  A-1 ", name=" Remera  "))
     assert (product.sku, product.name) == ("A-1", "Remera")
     assert product.min_stock == 0
+    assert product.unit == "UN"
     assert product.is_active is True
 
 
@@ -109,12 +111,55 @@ def test_create_accepts_zero_prices(service: ProductService, category: Category)
     assert product.cost_price == 0
 
 
-@pytest.mark.parametrize("min_stock", [-1, True])
+@pytest.mark.parametrize("min_stock", [-1, True, 1.5, Decimal("-0.001"), Decimal("NaN")])
 def test_create_rejects_invalid_min_stock(
-    service: ProductService, category: Category, min_stock: int
+    service: ProductService, category: Category, min_stock: object
 ) -> None:
     with pytest.raises(InvalidMinStockError):
         service.create(**_data(category, min_stock=min_stock))
+
+
+def test_un_rejects_decimal_min_stock(service: ProductService, category: Category) -> None:
+    with pytest.raises(InvalidMinStockError, match="UN solo admite cantidades enteras"):
+        service.create(**_data(category, unit="UN", min_stock=Decimal("1.5")))
+
+
+@pytest.mark.parametrize("unit", ["KG", "M", "L"])
+def test_decimal_units_accept_decimal_min_stock(
+    service: ProductService, category: Category, unit: str
+) -> None:
+    product = service.create(**_data(category, unit=unit, min_stock=Decimal("1.5")))
+    assert (product.unit, product.min_stock) == (unit, Decimal("1.500"))
+
+
+def test_rejects_more_than_three_decimals_in_min_stock(
+    service: ProductService, category: Category
+) -> None:
+    with pytest.raises(InvalidMinStockError, match="hasta 3 decimales"):
+        service.create(**_data(category, unit="KG", min_stock=Decimal("0.0001")))
+
+
+@pytest.mark.parametrize("unit", ["XX", "kg", ""])
+def test_rejects_unknown_unit(service: ProductService, category: Category, unit: str) -> None:
+    with pytest.raises(InvalidUnitError):
+        service.create(**_data(category, unit=unit))
+
+
+def test_update_can_change_unit_when_min_stock_still_fits(
+    service: ProductService, category: Category
+) -> None:
+    product = service.create(**_data(category, unit="KG", min_stock=Decimal("2")))
+    updated = service.update(product.id, **_data(category, unit="UN", min_stock=Decimal("2")))
+    assert (updated.unit, updated.min_stock) == ("UN", Decimal("2"))
+
+
+def test_update_to_un_fails_if_min_stock_has_decimals(
+    service: ProductService, category: Category
+) -> None:
+    product = service.create(**_data(category, unit="KG", min_stock=Decimal("1.5")))
+    with pytest.raises(InvalidMinStockError):
+        service.update(product.id, **_data(category, unit="UN", min_stock=Decimal("1.5")))
+    assert service.get(product.id).unit == "KG"
 
 
 def test_update_changes_fields(service: ProductService, category: Category) -> None:

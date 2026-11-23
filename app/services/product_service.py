@@ -3,6 +3,7 @@ from decimal import Decimal
 from typing import Any
 
 from app.models.product import Product
+from app.models.unit import Unit
 from app.repositories.category_repository import CategoryRepository
 from app.repositories.product_repository import ProductRepository
 from app.services.errors import (
@@ -11,11 +12,14 @@ from app.services.errors import (
     InvalidMinStockError,
     InvalidPriceError,
     InvalidProductCategoryError,
+    InvalidQuantityError,
+    InvalidUnitError,
     ProductFieldTooLongError,
     ProductNameRequiredError,
     ProductNotFoundError,
     ProductSkuRequiredError,
 )
+from app.services.quantity import validate_quantity
 
 SKU_MAX_LENGTH = 50
 NAME_MAX_LENGTH = 150
@@ -49,9 +53,12 @@ class ProductService:
         category_id: int,
         cost_price: Decimal,
         sale_price: Decimal,
-        min_stock: int = 0,
+        unit: str = Unit.UN,
+        min_stock: Decimal = Decimal(0),
     ) -> Product:
-        fields = self._validated_fields(sku, name, category_id, cost_price, sale_price, min_stock)
+        fields = self._validated_fields(
+            sku, name, category_id, cost_price, sale_price, unit, min_stock
+        )
         if self._repo.get_by_sku_ci(fields["sku"]) is not None:
             raise DuplicateSkuError(fields["sku"])
         product = self._repo.add(**fields)
@@ -67,10 +74,13 @@ class ProductService:
         category_id: int,
         cost_price: Decimal,
         sale_price: Decimal,
-        min_stock: int = 0,
+        unit: str = Unit.UN,
+        min_stock: Decimal = Decimal(0),
     ) -> Product:
         product = self.get(product_id)
-        fields = self._validated_fields(sku, name, category_id, cost_price, sale_price, min_stock)
+        fields = self._validated_fields(
+            sku, name, category_id, cost_price, sale_price, unit, min_stock
+        )
         existing = self._repo.get_by_sku_ci(fields["sku"])
         if existing is not None and existing.id != product.id:
             raise DuplicateSkuError(fields["sku"])
@@ -103,10 +113,12 @@ class ProductService:
         category_id: int,
         cost_price: Decimal,
         sale_price: Decimal,
-        min_stock: int,
+        unit: str,
+        min_stock: Decimal,
     ) -> dict[str, Any]:
         if self._categories.get(category_id) is None:
             raise InvalidProductCategoryError(category_id)
+        valid_unit = self._validated_unit(unit)
         return {
             "sku": self._normalize_text(sku, SKU_MAX_LENGTH, "El SKU", ProductSkuRequiredError()),
             "name": self._normalize_text(
@@ -115,7 +127,8 @@ class ProductService:
             "category_id": category_id,
             "cost_price": self._validated_price(cost_price, "El precio de costo"),
             "sale_price": self._validated_price(sale_price, "El precio de venta"),
-            "min_stock": self._validated_min_stock(min_stock),
+            "unit": valid_unit.value,
+            "min_stock": self._validated_min_stock(valid_unit, min_stock),
         }
 
     @staticmethod
@@ -136,7 +149,16 @@ class ProductService:
         return value.quantize(_CENT)
 
     @staticmethod
-    def _validated_min_stock(value: int) -> int:
-        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-            raise InvalidMinStockError()
-        return value
+    def _validated_unit(unit: str) -> Unit:
+        try:
+            return Unit(unit)
+        except ValueError as exc:
+            raise InvalidUnitError(unit) from exc
+
+    @staticmethod
+    def _validated_min_stock(unit: Unit, value: Decimal) -> Decimal:
+        """RN14/RN18: cantidad >= 0 que la unidad del producto admita (también al cambiarla)."""
+        try:
+            return validate_quantity(unit, value)
+        except InvalidQuantityError as exc:
+            raise InvalidMinStockError(exc.reason) from exc
