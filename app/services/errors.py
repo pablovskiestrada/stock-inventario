@@ -67,3 +67,15 @@ class InvalidPriceError(DomainError):
 class InvalidMinStockError(DomainError):
     def __init__(self) -> None:
         super().__init__("El stock mínimo debe ser un entero mayor o igual a 0.")
+
+
+class InvalidUnitError(DomainError):
+    def __init__(self, unit: object) -> None:
+        super().__init__(f"La unidad «{unit}» no es válida. Usá UN, KG, M o L.")
+        self.unit = unit
+
+
+class InvalidQuantityError(DomainError):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason

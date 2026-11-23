@@ -1,9 +1,11 @@
 from collections.abc import Iterator
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 from sqlite3 import Connection as SQLiteConnection
 from typing import Any
 
-from sqlalchemy import DateTime, Engine, MetaData, create_engine, event, func
+from sqlalchemy import BigInteger, DateTime, Dialect, Engine, MetaData, create_engine, event, func
+from sqlalchemy.types import TypeDecorator
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 from app.config import get_settings
@@ -20,6 +22,47 @@ NAMING_CONVENTION = {
 
 class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
+
+
+QUANTITY_SCALE = 3
+QUANTITY_FACTOR = 10**QUANTITY_SCALE
+_MAX_STORED = 2**63 - 1  # BigInteger firmado de 64 bits
+
+
+class Quantity(TypeDecorator[Decimal]):
+    """Cantidad con 3 decimales (RN19).
+
+    En Python es `Decimal` (p. ej. `Decimal("1.500")`); en la base se guarda como entero en
+    milésimas (1,5 -> 1500), así las sumas en SQL son exactas. Acepta `Decimal`, `int` y `str`
+    numérico (con punto decimal); rechaza `float`, `bool`, NaN/infinito y más de 3 decimales.
+    """
+
+    impl = BigInteger
+    cache_ok = True
+
+    def process_bind_param(self, value: Any, dialect: Dialect) -> int | None:
+        if value is None:
+            return None
+        if isinstance(value, bool) or not isinstance(value, Decimal | int | str):
+            raise TypeError(f"Quantity no acepta {type(value).__name__}: usá Decimal, int o str.")
+        try:
+            number = Decimal(value)
+        except InvalidOperation as exc:
+            raise ValueError(f"Cantidad no numérica: {value!r}") from exc
+        if not number.is_finite():
+            raise ValueError(f"Cantidad no finita: {value!r}")
+        milli = number * QUANTITY_FACTOR
+        if milli != milli.to_integral_value():
+            raise ValueError(f"La cantidad admite hasta {QUANTITY_SCALE} decimales: {value!r}")
+        stored = int(milli)
+        if abs(stored) > _MAX_STORED:
+            raise ValueError(f"Cantidad fuera de rango: {value!r}")
+        return stored
+
+    def process_result_value(self, value: int | None, dialect: Dialect) -> Decimal | None:
+        if value is None:
+            return None
+        return Decimal(value).scaleb(-QUANTITY_SCALE)
 
 
 class CreatedAtMixin:
