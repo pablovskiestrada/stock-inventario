@@ -15,10 +15,13 @@ from app.services.errors import (
     DomainError,
     DuplicateCategoryNameError,
     DuplicateSkuError,
+    InactiveProductError,
+    InsufficientStockError,
     ProductNotFoundError,
     UnitChangeBlockedError,
 )
 from app.services.product_service import ProductService
+from app.services.stock_movement_service import StockMovementService
 
 
 def get_category_service(session: Annotated[Session, Depends(get_session)]) -> CategoryService:
@@ -31,8 +34,15 @@ def get_product_service(session: Annotated[Session, Depends(get_session)]) -> Pr
     )
 
 
+def get_stock_movement_service(
+    session: Annotated[Session, Depends(get_session)],
+) -> StockMovementService:
+    return StockMovementService(StockMovementRepository(session), ProductRepository(session))
+
+
 CategoryServiceDep = Annotated[CategoryService, Depends(get_category_service)]
 ProductServiceDep = Annotated[ProductService, Depends(get_product_service)]
+StockMovementServiceDep = Annotated[StockMovementService, Depends(get_stock_movement_service)]
 
 
 def http_status_for(exc: DomainError) -> int:
@@ -41,7 +51,12 @@ def http_status_for(exc: DomainError) -> int:
         return 404
     if isinstance(
         exc,
-        DuplicateCategoryNameError | CategoryInUseError | DuplicateSkuError | UnitChangeBlockedError,
+        DuplicateCategoryNameError
+        | CategoryInUseError
+        | DuplicateSkuError
+        | UnitChangeBlockedError
+        | InactiveProductError
+        | InsufficientStockError,
     ):
         return 409
     return 422
