@@ -1,4 +1,5 @@
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
@@ -8,6 +9,7 @@ from sqlalchemy.pool import StaticPool
 
 import app.models  # noqa: F401  registra los modelos en Base.metadata
 from app.db import Base, get_session
+from app.models.stock_movement import StockMovement
 from app.main import app
 
 
@@ -43,3 +45,22 @@ def client(engine: Engine) -> Iterator[TestClient]:
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def seed_movement(engine: Engine) -> Callable[[int], None]:
+    """Deja una entrada de 1,5 en la base para el producto dado (sin pasar por la API)."""
+
+    def seed(product_id: int) -> None:
+        with sessionmaker(bind=engine, expire_on_commit=False)() as db_session:
+            db_session.add(
+                StockMovement(
+                    product_id=product_id,
+                    type="IN",
+                    quantity=Decimal("1.5"),
+                    unit_price=Decimal("10.00"),
+                )
+            )
+            db_session.commit()
+
+    return seed

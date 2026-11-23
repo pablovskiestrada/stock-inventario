@@ -100,6 +100,8 @@ erDiagram
 - RN24. El stock actual (RN2) se calcula en SQL sobre las milésimas enteras (`COALESCE(SUM(...), 0)`): nunca es una columna ni se suma con `float`. El listado de productos lo trae con una sola consulta agrupada por producto (sin N+1).
 - RN25. RN4 se evalúa en la misma transacción que el INSERT: el servicio calcula el stock y registra el movimiento con un único `commit()`, y si algo falla no se persiste nada. No hay protección contra escrituras concurrentes porque el sistema es de un solo usuario.
 - RN26. `StockMovementService.register_movement(...)` es el único punto de escritura de movimientos: todas las reglas (RN3, RN4, RN7, RN22, RN23) viven ahí, y la API y las pantallas lo llaman. Además solo expone lecturas de stock (`current_stock`, `current_stock_by_product`).
+- RN27. La unidad de un producto que ya tiene movimientos no se puede cambiar: se rechaza con `UnitChangeBlockedError` (HTTP 409), aunque la unidad nueva sea más permisiva. Los movimientos guardan cantidades válidas para la unidad con que se cargaron (p. ej. 1,5 `KG` no existe en `UN`). Sin movimientos, el cambio sigue permitido (RN18 revalida `min_stock`). Mantener la misma unidad y editar el resto de los campos siempre se puede.
+- RN28. El SKU sigue siendo editable aunque el producto tenga movimientos (con la misma validación de unicidad, RN1): los movimientos apuntan al producto por `id`, no por SKU, así que renombrar el SKU no altera el libro mayor.
 
 ## Decisiones tomadas
 - Stock calculado desde movimientos (trazabilidad total). Si hay problemas de performance, se agrega una columna cacheada más adelante.
@@ -117,8 +119,6 @@ erDiagram
 5. Pulido: errores, empty states, README.
 
 ## Puntos abiertos
-- Rebanada 2: revisar si el SKU debe poder editarse cuando el producto ya tiene movimientos. (En 1b el SKU es editable, con la misma validación de unicidad.)
-- Rebanada 2b: cambiar la unidad de un producto que ya tiene movimientos puede dejar cantidades inválidas (p. ej. pasar de `KG` con 1,5 a `UN`). En 2a el cambio está permitido y solo revalida `min_stock`.
 - Sistema local de un solo usuario; sin integración con otros módulos.
 
 ## Mejoras futuras

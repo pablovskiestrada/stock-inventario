@@ -6,6 +6,7 @@ from app.models.product import Product
 from app.models.unit import Unit
 from app.repositories.category_repository import CategoryRepository
 from app.repositories.product_repository import ProductRepository
+from app.repositories.stock_movement_repository import StockMovementRepository
 from app.services.errors import (
     DomainError,
     DuplicateSkuError,
@@ -17,6 +18,7 @@ from app.services.errors import (
     ProductNameRequiredError,
     ProductNotFoundError,
     ProductSkuRequiredError,
+    UnitChangeBlockedError,
 )
 from app.services.money import validate_price
 from app.services.quantity import validate_quantity
@@ -27,10 +29,14 @@ NAME_MAX_LENGTH = 150
 
 class ProductService:
     def __init__(
-        self, repository: ProductRepository, category_repository: CategoryRepository
+        self,
+        repository: ProductRepository,
+        category_repository: CategoryRepository,
+        movement_repository: StockMovementRepository,
     ) -> None:
         self._repo = repository
         self._categories = category_repository
+        self._movements = movement_repository
 
     def list(
         self, *, category_id: int | None = None, is_active: bool | None = None
@@ -79,6 +85,7 @@ class ProductService:
         fields = self._validated_fields(
             sku, name, category_id, cost_price, sale_price, unit, min_stock
         )
+        self._ensure_unit_change_is_allowed(product, fields["unit"])
         existing = self._repo.get_by_sku_ci(fields["sku"])
         if existing is not None and existing.id != product.id:
             raise DuplicateSkuError(fields["sku"])
@@ -96,6 +103,15 @@ class ProductService:
     def has_price_warning(product: Product) -> bool:
         """RN16: advertencia informativa; nunca bloquea el guardado."""
         return product.sale_price < product.cost_price
+
+    def _ensure_unit_change_is_allowed(self, product: Product, new_unit: str) -> None:
+        """RN27: los movimientos guardan cantidades válidas para la unidad con que se cargaron.
+
+        Cambiar la unidad después las reinterpretaría (p. ej. 1,5 KG -> 1,5 UN, inválido), así
+        que se rechaza si el producto ya tiene movimientos. El SKU no tiene esa restricción (RN28).
+        """
+        if new_unit != product.unit and self._movements.exists_for_product(product.id):
+            raise UnitChangeBlockedError(product.id)
 
     def _set_active(self, product_id: int, is_active: bool) -> Product:
         product = self.get(product_id)

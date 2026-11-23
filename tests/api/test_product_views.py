@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from typing import Any
 
 import pytest
@@ -361,5 +362,22 @@ def test_update_changing_unit_to_un_with_decimal_min_stock_targets_row_error(
         f"/products/{created['id']}", data=_form(cat, unit="UN", min_stock="1,5"), headers=HX
     )
     assert response.status_code == 422
+    assert response.headers["HX-Retarget"] == f"#row-error-{created['id']}"
+    assert client.get(f"/api/products/{created['id']}").json()["unit"] == "KG"
+
+
+def test_update_changing_the_unit_with_movements_shows_the_row_error(
+    client: TestClient, seed_movement: Callable[[int], None]
+) -> None:
+    cat = _category(client)
+    created = _api_create(client, cat, unit="KG")
+    seed_movement(created["id"])
+
+    response = client.put(
+        f"/products/{created['id']}", data=_form(cat, unit="UN", min_stock="0"), headers=HX
+    )
+
+    assert response.status_code == 409
+    assert "No se puede cambiar la unidad" in response.text
     assert response.headers["HX-Retarget"] == f"#row-error-{created['id']}"
     assert client.get(f"/api/products/{created['id']}").json()["unit"] == "KG"

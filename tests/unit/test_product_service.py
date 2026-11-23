@@ -7,6 +7,7 @@ from app.models.category import Category
 from app.models.product import Product
 from app.repositories.category_repository import CategoryRepository
 from app.repositories.product_repository import ProductRepository
+from app.repositories.stock_movement_repository import StockMovementRepository
 from app.services.errors import (
     DuplicateSkuError,
     InvalidMinStockError,
@@ -17,13 +18,22 @@ from app.services.errors import (
     ProductNameRequiredError,
     ProductNotFoundError,
     ProductSkuRequiredError,
+    UnitChangeBlockedError,
 )
 from app.services.product_service import ProductService
+from app.services.stock_movement_service import StockMovementService
 
 
 @pytest.fixture
 def service(session: Session) -> ProductService:
-    return ProductService(ProductRepository(session), CategoryRepository(session))
+    return ProductService(
+        ProductRepository(session), CategoryRepository(session), StockMovementRepository(session)
+    )
+
+
+@pytest.fixture
+def movements(session: Session) -> StockMovementService:
+    return StockMovementService(StockMovementRepository(session), ProductRepository(session))
 
 
 @pytest.fixture
@@ -252,3 +262,76 @@ def test_has_price_warning_only_when_sale_below_cost(
 ) -> None:
     product = Product(cost_price=Decimal(cost), sale_price=Decimal(sale))
     assert ProductService.has_price_warning(product) is expected
+
+
+# --- Rebanada 2b: unidad y SKU con movimientos (RN27, RN28) ---
+
+
+def _product_with_movement(
+    service: ProductService, movements: StockMovementService, category: Category, **overrides: object
+) -> Product:
+    product = service.create(**_data(category, **overrides))
+    movements.register_movement(
+        product_id=product.id, type="IN", quantity=Decimal("2"), unit_price=Decimal("10")
+    )
+    return product
+
+
+@pytest.mark.parametrize("old,new", [("KG", "UN"), ("UN", "KG"), ("KG", "M"), ("L", "KG")])
+def test_update_rejects_changing_the_unit_when_the_product_has_movements(
+    service: ProductService,
+    movements: StockMovementService,
+    category: Category,
+    old: str,
+    new: str,
+) -> None:
+    product = _product_with_movement(service, movements, category, unit=old)
+    with pytest.raises(UnitChangeBlockedError):  # también hacia una unidad más permisiva
+        service.update(product.id, **_data(category, unit=new, name="Otro nombre"))
+    stored = service.get(product.id)
+    assert (stored.unit, stored.name) == (old, "Remera")  # no se aplicó nada
+
+
+def test_update_allows_changing_the_unit_when_there_are_no_movements(
+    service: ProductService, category: Category
+) -> None:
+    product = service.create(**_data(category, unit="KG"))
+    assert service.update(product.id, **_data(category, unit="UN")).unit == "UN"
+
+
+def test_update_keeps_working_with_movements_when_the_unit_does_not_change(
+    service: ProductService, movements: StockMovementService, category: Category
+) -> None:
+    product = _product_with_movement(service, movements, category, unit="KG")
+    updated = service.update(
+        product.id,
+        **_data(category, unit="KG", name="Harina 000", sale_price=Decimal("33.50"), min_stock=1),
+    )
+    assert (updated.name, updated.sale_price, updated.min_stock) == (
+        "Harina 000",
+        Decimal("33.50"),
+        Decimal("1"),
+    )
+
+
+def test_movements_of_another_product_do_not_block_the_unit_change(
+    service: ProductService, movements: StockMovementService, category: Category
+) -> None:
+    _product_with_movement(service, movements, category, sku="A", unit="KG")
+    other = service.create(**_data(category, sku="B", unit="KG"))
+    assert service.update(other.id, **_data(category, sku="B", unit="UN")).unit == "UN"
+
+
+def test_sku_stays_editable_when_the_product_has_movements(
+    service: ProductService, movements: StockMovementService, category: Category
+) -> None:
+    product = _product_with_movement(service, movements, category, sku="OLD-1")
+
+    updated = service.update(product.id, **_data(category, sku="NEW-1"))
+
+    assert updated.sku == "NEW-1"
+    assert movements.current_stock(product.id) == Decimal("2")  # los movimientos apuntan por id
+    other = service.create(**_data(category, sku="OTHER"))
+    with pytest.raises(DuplicateSkuError):  # misma validación de unicidad (RN1)
+        service.update(product.id, **_data(category, sku="other"))
+    assert other.sku == "OTHER"

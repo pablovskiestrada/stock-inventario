@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from typing import Any
 
 import pytest
@@ -182,3 +183,36 @@ def test_deleting_category_with_products_returns_409(client: TestClient) -> None
     client.post(f"/api/products/{created['id']}/deactivate")
     assert client.delete(f"/api/categories/{category['id']}").status_code == 409
     assert client.get(f"/api/categories/{category['id']}").status_code == 200
+
+
+def test_update_changing_the_unit_of_a_product_with_movements_returns_409(
+    client: TestClient, seed_movement: Callable[[int], None]
+) -> None:
+    category = _category(client)
+    created = _create(client, category["id"], unit="KG")
+    seed_movement(created["id"])
+
+    response = client.put(
+        f"/api/products/{created['id']}", json=_payload(category["id"], unit="UN", name="Nuevo")
+    )
+
+    assert response.status_code == 409
+    assert "No se puede cambiar la unidad" in response.json()["detail"]
+    stored = client.get(f"/api/products/{created['id']}").json()
+    assert (stored["unit"], stored["name"]) == ("KG", "Remera")
+
+
+def test_update_sku_and_other_fields_of_a_product_with_movements_returns_200(
+    client: TestClient, seed_movement: Callable[[int], None]
+) -> None:
+    category = _category(client)
+    created = _create(client, category["id"], unit="KG")
+    seed_movement(created["id"])
+
+    response = client.put(
+        f"/api/products/{created['id']}",
+        json=_payload(category["id"], unit="KG", sku="NEW-1", name="Harina"),
+    )
+
+    assert response.status_code == 200
+    assert (response.json()["sku"], response.json()["unit"]) == ("NEW-1", "KG")
