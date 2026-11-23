@@ -34,3 +34,20 @@ class StockMovementRead(BaseModel):
     note: str | None
     reference: str | None
     created_at: datetime
+
+
+class StockMovementHistoryItem(StockMovementRead):
+    """Una fila del historial (RN31): el movimiento, su efecto con signo y el saldo (RN30)."""
+
+    signed_quantity: Decimal
+    balance: Decimal
+
+
+class StockMovementHistoryRead(BaseModel):
+    """Historial de un producto: los más recientes primero, hasta `limit`, de `total` en el libro."""
+
+    product_id: int
+    unit: str
+    limit: int
+    total: int
+    items: list[StockMovementHistoryItem]
