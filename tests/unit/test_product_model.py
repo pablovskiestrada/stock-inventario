@@ -1,7 +1,7 @@
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import Engine
+from sqlalchemy import Engine, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -48,8 +48,48 @@ def test_defaults_min_stock_zero_and_active(session: Session, category: Category
     product = _product(category.id)
     session.add(product)
     session.commit()
-    assert product.min_stock == 0
+    assert product.min_stock == Decimal(0)
+    assert product.unit == "UN"
     assert product.is_active is True
+
+
+def test_unit_defaults_to_un_in_python_and_in_the_database(
+    session: Session, category: Category
+) -> None:
+    product = _product(category.id)
+    session.add(product)
+    session.commit()
+    assert product.unit == "UN"
+
+    session.execute(
+        text(
+            "INSERT INTO products (sku, name, category_id, cost_price, sale_price) "
+            f"VALUES ('RAW-1', 'Crudo', {category.id}, 1, 1)"  # sin unit: usa el server_default
+        )
+    )
+    assert session.execute(text("SELECT unit, min_stock FROM products WHERE sku='RAW-1'")).one() == (
+        "UN",
+        0,
+    )
+
+
+@pytest.mark.parametrize("unit", ["UN", "KG", "M", "L"])
+def test_every_unit_is_accepted(session: Session, category: Category, unit: str) -> None:
+    session.add(_product(category.id, unit=unit))
+    session.commit()
+
+
+def test_min_stock_with_decimals_round_trips_exactly(
+    engine: Engine, session: Session, category: Category
+) -> None:
+    session.add(_product(category.id, unit="KG", min_stock=Decimal("1.500")))
+    session.commit()
+
+    with sessionmaker(bind=engine)() as fresh:
+        stored = fresh.query(Product).one()
+        assert stored.min_stock == Decimal("1.500")
+        assert stored.min_stock.as_tuple() == Decimal("1.500").as_tuple()
+    assert session.execute(text("SELECT min_stock FROM products")).scalar_one() == 1500
 
 
 @pytest.mark.parametrize(
@@ -58,6 +98,10 @@ def test_defaults_min_stock_zero_and_active(session: Session, category: Category
         {"cost_price": Decimal("-0.01")},
         {"sale_price": Decimal("-1")},
         {"min_stock": -1},
+        {"min_stock": Decimal("-0.001")},
+        {"unit": "XX"},
+        {"unit": "kg"},  # el CHECK distingue mayúsculas
+        {"unit": ""},
         {"sku": "   "},
         {"name": "   "},
     ],
