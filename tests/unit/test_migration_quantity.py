@@ -99,7 +99,7 @@ def seeded_previous(alembic_cfg: Config, db_url: str) -> str:
 
 
 def test_upgrade_converts_existing_data(alembic_cfg: Config, seeded_previous: str) -> None:
-    command.upgrade(alembic_cfg, "head")
+    command.upgrade(alembic_cfg, HEAD)
 
     assert _min_stocks(seeded_previous) == [0, 5000, 12000]
     assert _query(seeded_previous, "SELECT DISTINCT unit FROM products") == [("UN",)]
@@ -118,7 +118,7 @@ def test_upgrade_keeps_every_index_and_check_and_adds_the_unit_check(
     before = _schema(seeded_previous)
     assert before["checks"] == OLD_CHECKS  # punto de partida del test
 
-    command.upgrade(alembic_cfg, "head")
+    command.upgrade(alembic_cfg, HEAD)
     after = _schema(seeded_previous)
 
     assert OLD_CHECKS <= after["checks"]
@@ -140,7 +140,7 @@ def test_upgrade_keeps_every_index_and_check_and_adds_the_unit_check(
 def test_unit_check_exists_for_real_in_the_migrated_database(
     alembic_cfg: Config, seeded_previous: str
 ) -> None:
-    command.upgrade(alembic_cfg, "head")
+    command.upgrade(alembic_cfg, HEAD)
     insert = (
         "INSERT INTO products (sku, name, category_id, cost_price, sale_price, unit) "
         "VALUES ('{sku}', 'X', 1, 1, 1, '{unit}')"
@@ -156,7 +156,7 @@ def test_unit_check_exists_for_real_in_the_migrated_database(
 def test_other_constraints_survive_in_the_migrated_database(
     alembic_cfg: Config, seeded_previous: str
 ) -> None:
-    command.upgrade(alembic_cfg, "head")
+    command.upgrade(alembic_cfg, HEAD)
 
     with pytest.raises(IntegrityError):  # CHECK min_stock >= 0
         _execute(
@@ -183,7 +183,7 @@ def test_downgrade_round_trip_restores_integers_and_schema(
 ) -> None:
     before = _schema(seeded_previous)
 
-    command.upgrade(alembic_cfg, "head")
+    command.upgrade(alembic_cfg, HEAD)
     command.downgrade(alembic_cfg, PREVIOUS)
     after = _schema(seeded_previous)
 
@@ -198,7 +198,7 @@ def test_downgrade_round_trip_restores_integers_and_schema(
 def test_downgrade_aborts_when_a_min_stock_has_decimals(
     alembic_cfg: Config, seeded_previous: str
 ) -> None:
-    command.upgrade(alembic_cfg, "head")
+    command.upgrade(alembic_cfg, HEAD)
     _execute(
         seeded_previous,
         "INSERT INTO products (sku, name, category_id, cost_price, sale_price, unit, min_stock) "

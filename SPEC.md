@@ -21,9 +21,14 @@ Login y multiusuario, varios depósitos, proveedores, facturación, código de b
 | Categoría | Agrupación de productos | `Category` |
 | SKU | Código único interno del producto | `sku` |
 | Movimiento | Registro inmutable de un cambio de stock | `StockMovement` |
+| Libro mayor | La tabla de movimientos: fuente única del stock; solo se agregan filas | `stock_movements` |
 | Entrada | Ingreso de mercadería (compra) | `IN` |
 | Salida | Egreso de mercadería (venta) | `OUT` |
 | Ajuste | Corrección de stock (conteo, rotura, error) | `ADJUSTMENT` |
+| Precio unitario | Costo de compra (en `IN`) o precio de venta (en `OUT`) del momento del movimiento | `unit_price` |
+| Motivo de ajuste | Por qué se ajusta: `ROTURA`, `MERMA`, `CONTEO`, `ERROR_CARGA`, `OTRO` | `reason` |
+| Nota | Texto libre del movimiento; obligatoria si el motivo es `OTRO` | `note` |
+| Referencia | Dato opcional del documento de origen (nº de remito, factura del proveedor) | `reference` |
 | Stock actual | Suma de movimientos del producto | `current_stock` (calculado) |
 | Stock mínimo | Umbral para alertar reposición | `min_stock` |
 | Unidad de medida | Unidad en que se cuenta un producto: `UN` (unidades), `KG`, `M`, `L` | `unit` |
@@ -57,11 +62,14 @@ erDiagram
     }
     STOCK_MOVEMENT {
         int id PK
-        int product_id FK
-        string type "IN | OUT | ADJUSTMENT"
-        quantity quantity "milésimas enteras (RN19)"
-        string note
-        datetime created_at
+        int product_id FK "sin ON DELETE CASCADE (RN21)"
+        string type "IN | OUT | ADJUSTMENT (RN21)"
+        quantity quantity "milésimas enteras (RN19); con signo solo en ADJUSTMENT (RN3)"
+        decimal unit_price "obligatorio en IN y OUT; NULL en ADJUSTMENT (RN22)"
+        string reason "solo ADJUSTMENT: ROTURA | MERMA | CONTEO | ERROR_CARGA | OTRO (RN23)"
+        string note "obligatoria si reason = OTRO (RN23)"
+        string reference "opcional (RN23)"
+        datetime created_at "sin updated_at: inmutable (RN5)"
     }
 ```
 
@@ -70,7 +78,7 @@ erDiagram
 - RN2. El stock actual NO se almacena: se calcula como `suma(IN) - suma(OUT) + suma(ADJUSTMENT)`.
 - RN3. En `IN` y `OUT`, `quantity` es siempre > 0. En `ADJUSTMENT`, `quantity` es distinto de 0 y puede ser negativo (el signo es la corrección).
 - RN4. Ningún movimiento puede dejar el stock de un producto en negativo.
-- RN5. Los movimientos son inmutables: no se editan ni se borran. Los errores se corrigen con un ajuste.
+- RN5. Los movimientos son inmutables: no se editan ni se borran. No tienen `updated_at` y no existe UPDATE ni DELETE de movimientos: ni endpoints ni métodos de repositorio. Los errores se corrigen con un ajuste.
 - RN6. Los productos nunca se eliminan físicamente: se desactivan (`is_active = false`) y se pueden reactivar. Desactivar y reactivar son idempotentes.
 - RN7. No se pueden registrar movimientos sobre productos inactivos.
 - RN8. `cost_price` y `sale_price` >= 0. `min_stock` >= 0 (cantidad, ver RN18). Se garantiza también con CHECK en la base.
@@ -86,6 +94,9 @@ erDiagram
 - RN18. `UN` solo admite cantidades enteras; `KG`, `M` y `L` admiten hasta 3 decimales. Una cantidad nunca es negativa ni tiene más de 3 decimales ni es NaN/infinita. La regla vive en una función pura reutilizable (`validate_quantity(unit, quantity)`), usada hoy para `min_stock` y mañana para los movimientos (rebanada 2b). Si `min_stock` tiene decimales, la unidad del producto tiene que admitirlos (también al cambiar la unidad).
 - RN19. Las cantidades se guardan como entero en milésimas (`Quantity`: `Decimal` con 3 decimales en Python, `BigInteger` en la base; 1,5 -> 1500), así las sumas en SQL son exactas. Nunca `float`.
 - RN20. Entrada de cantidades en formularios: no se aceptan separadores de miles. Un único separador (coma o punto) es el decimal (`1,5` = `1.5` = 1,5; `1.500` = 1,5). Con más de un separador (`1.500,5`, `1,500.5`) se rechaza con un mensaje claro. Tras guardar, la pantalla muestra el valor interpretado con su unidad (p. ej. «1.5 KG»).
+- RN21. `type` de un movimiento es `IN`, `OUT` o `ADJUSTMENT` (`String` con CHECK, no Enum de base). `product_id` es FK a `products.id` sin `ON DELETE CASCADE` (los productos nunca se borran, RN6) y con índice. Las combinaciones válidas de RN3, RN22 y RN23 se garantizan también con CHECK en la base, no solo en el servicio.
+- RN22. `unit_price` es `Numeric(12, 2)` >= 0. Es obligatorio en `IN` (costo unitario de compra) y en `OUT` (precio unitario de venta), y debe ser NULL en `ADJUSTMENT` (ni siquiera 0). Es una foto del momento: no cambia si después cambia el precio del producto, y registrar un movimiento no modifica `cost_price` ni `sale_price` del producto.
+- RN23. `reason` es obligatorio solo en `ADJUSTMENT` y de una lista fija (`ROTURA`, `MERMA`, `CONTEO`, `ERROR_CARGA`, `OTRO`); en `IN` y `OUT` es NULL. `note` es texto libre (máx. 500 caracteres): obligatoria, no vacía tras `trim`, cuando `reason` es `OTRO`; opcional en el resto. `reference` es texto opcional (máx. 100 caracteres) y hoy es solo un dato. `note` y `reference` se guardan sin espacios en los extremos y vacíos como NULL.
 
 ## Decisiones tomadas
 - Stock calculado desde movimientos (trazabilidad total). Si hay problemas de performance, se agrega una columna cacheada más adelante.
