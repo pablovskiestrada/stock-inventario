@@ -10,7 +10,6 @@ from app.services.errors import (
     DomainError,
     DuplicateSkuError,
     InvalidMinStockError,
-    InvalidPriceError,
     InvalidProductCategoryError,
     InvalidQuantityError,
     InvalidUnitError,
@@ -19,12 +18,11 @@ from app.services.errors import (
     ProductNotFoundError,
     ProductSkuRequiredError,
 )
+from app.services.money import validate_price
 from app.services.quantity import validate_quantity
 
 SKU_MAX_LENGTH = 50
 NAME_MAX_LENGTH = 150
-_CENT = Decimal("0.01")
-_MAX_PRICE = Decimal(10) ** 10  # Numeric(12, 2): 10 dígitos enteros
 
 
 class ProductService:
@@ -125,8 +123,8 @@ class ProductService:
                 name, NAME_MAX_LENGTH, "El nombre", ProductNameRequiredError()
             ),
             "category_id": category_id,
-            "cost_price": self._validated_price(cost_price, "El precio de costo"),
-            "sale_price": self._validated_price(sale_price, "El precio de venta"),
+            "cost_price": validate_price(cost_price, "El precio de costo"),
+            "sale_price": validate_price(sale_price, "El precio de venta"),
             "unit": valid_unit.value,
             "min_stock": self._validated_min_stock(valid_unit, min_stock),
         }
@@ -139,14 +137,6 @@ class ProductService:
         if len(clean) > max_length:
             raise ProductFieldTooLongError(label, max_length)
         return clean
-
-    @staticmethod
-    def _validated_price(value: Decimal, label: str) -> Decimal:
-        if not value.is_finite() or value < 0 or value >= _MAX_PRICE:
-            raise InvalidPriceError(label)
-        if value != value.quantize(_CENT):  # más de 2 decimales
-            raise InvalidPriceError(label)
-        return value.quantize(_CENT)
 
     @staticmethod
     def _validated_unit(unit: str) -> Unit:

@@ -76,11 +76,11 @@ erDiagram
 ## Reglas de negocio
 - RN1. El SKU se guarda sin espacios en los extremos y es único sin distinguir mayúsculas/minúsculas (`ABC-1` = `abc-1`). Se garantiza en el servicio y con un índice único sobre `lower(sku)` en la base.
 - RN2. El stock actual NO se almacena: se calcula como `suma(IN) - suma(OUT) + suma(ADJUSTMENT)`.
-- RN3. En `IN` y `OUT`, `quantity` es siempre > 0. En `ADJUSTMENT`, `quantity` es distinto de 0 y puede ser negativo (el signo es la corrección).
-- RN4. Ningún movimiento puede dejar el stock de un producto en negativo.
+- RN3. En `IN` y `OUT`, `quantity` es siempre > 0. En `ADJUSTMENT`, `quantity` es distinto de 0 y puede ser negativo (el signo es la corrección). La magnitud se valida con `validate_quantity` según la unidad del producto (RN18); en `ADJUSTMENT`, sobre el valor absoluto.
+- RN4. Ningún movimiento puede dejar el stock de un producto en negativo: una salida o un ajuste que lo haga se rechaza con `InsufficientStockError` (HTTP 409). Dejarlo en exactamente 0 es válido.
 - RN5. Los movimientos son inmutables: no se editan ni se borran. No tienen `updated_at` y no existe UPDATE ni DELETE de movimientos: ni endpoints ni métodos de repositorio. Los errores se corrigen con un ajuste.
 - RN6. Los productos nunca se eliminan físicamente: se desactivan (`is_active = false`) y se pueden reactivar. Desactivar y reactivar son idempotentes.
-- RN7. No se pueden registrar movimientos sobre productos inactivos.
+- RN7. No se pueden registrar movimientos sobre productos inactivos (`InactiveProductError`, HTTP 409). Su stock actual se sigue pudiendo consultar.
 - RN8. `cost_price` y `sale_price` >= 0. `min_stock` >= 0 (cantidad, ver RN18). Se garantiza también con CHECK en la base.
 - RN9. Una categoría con productos (activos o inactivos) no se puede eliminar: `CategoryService.delete` lanza `CategoryInUseError`. La FK `products.category_id` (sin `ON DELETE CASCADE`) es la segunda defensa.
 - RN10. Un producto está "bajo mínimo" cuando `current_stock <= min_stock` y está activo.
@@ -97,6 +97,9 @@ erDiagram
 - RN21. `type` de un movimiento es `IN`, `OUT` o `ADJUSTMENT` (`String` con CHECK, no Enum de base). `product_id` es FK a `products.id` sin `ON DELETE CASCADE` (los productos nunca se borran, RN6) y con índice. Las combinaciones válidas de RN3, RN22 y RN23 se garantizan también con CHECK en la base, no solo en el servicio.
 - RN22. `unit_price` es `Numeric(12, 2)` >= 0. Es obligatorio en `IN` (costo unitario de compra) y en `OUT` (precio unitario de venta), y debe ser NULL en `ADJUSTMENT` (ni siquiera 0). Es una foto del momento: no cambia si después cambia el precio del producto, y registrar un movimiento no modifica `cost_price` ni `sale_price` del producto.
 - RN23. `reason` es obligatorio solo en `ADJUSTMENT` y de una lista fija (`ROTURA`, `MERMA`, `CONTEO`, `ERROR_CARGA`, `OTRO`); en `IN` y `OUT` es NULL. `note` es texto libre (máx. 500 caracteres): obligatoria, no vacía tras `trim`, cuando `reason` es `OTRO`; opcional en el resto. `reference` es texto opcional (máx. 100 caracteres) y hoy es solo un dato. `note` y `reference` se guardan sin espacios en los extremos y vacíos como NULL.
+- RN24. El stock actual (RN2) se calcula en SQL sobre las milésimas enteras (`COALESCE(SUM(...), 0)`): nunca es una columna ni se suma con `float`. El listado de productos lo trae con una sola consulta agrupada por producto (sin N+1).
+- RN25. RN4 se evalúa en la misma transacción que el INSERT: el servicio calcula el stock y registra el movimiento con un único `commit()`, y si algo falla no se persiste nada. No hay protección contra escrituras concurrentes porque el sistema es de un solo usuario.
+- RN26. `StockMovementService.register_movement(...)` es el único punto de escritura de movimientos: todas las reglas (RN3, RN4, RN7, RN22, RN23) viven ahí, y la API y las pantallas lo llaman. Además solo expone lecturas de stock (`current_stock`, `current_stock_by_product`).
 
 ## Decisiones tomadas
 - Stock calculado desde movimientos (trazabilidad total). Si hay problemas de performance, se agrega una columna cacheada más adelante.
@@ -116,3 +119,7 @@ erDiagram
 ## Puntos abiertos
 - Rebanada 2: revisar si el SKU debe poder editarse cuando el producto ya tiene movimientos. (En 1b el SKU es editable, con la misma validación de unicidad.)
 - Rebanada 2b: cambiar la unidad de un producto que ya tiene movimientos puede dejar cantidades inválidas (p. ej. pasar de `KG` con 1,5 a `UN`). En 2a el cambio está permitido y solo revalida `min_stock`.
+- Sistema local de un solo usuario; sin integración con otros módulos.
+
+## Mejoras futuras
+- Registrar un ajuste por conteo indicando el stock real: el sistema calcularía la diferencia contra el stock actual y la registraría como `ADJUSTMENT` con motivo `CONTEO`. (No implementado.)
