@@ -6,6 +6,7 @@ from pydantic import ValidationError
 
 from app.models.product import Product
 from app.routers.deps import CategoryServiceDep, ProductServiceDep, http_status_for
+from app.routers.htmx import error_fragment
 from app.schemas.product import ProductCreate
 from app.services.category_service import CategoryService
 from app.services.errors import DomainError
@@ -68,16 +69,6 @@ FormDep = Annotated[ProductForm, Depends()]
 def _validation_message(exc: ValidationError) -> str:
     field = str(exc.errors()[0]["loc"][0])
     return FIELD_ERRORS.get(field, "Revisá los datos del formulario.")
-
-
-def _error(request: Request, message: str, status: int, target: str) -> HTMLResponse:
-    """Fragmento de error: HTMX lo coloca en `target` en lugar del swap original."""
-    response = templates.TemplateResponse(
-        request, "products/_error.html", {"message": message}, status_code=status
-    )
-    response.headers["HX-Retarget"] = target
-    response.headers["HX-Reswap"] = "innerHTML"
-    return response
 
 
 def _parse_filters(category: str, state: str) -> tuple[int | None, str]:
@@ -148,9 +139,9 @@ def create(
     try:
         product = products.create(**form.parse().model_dump())
     except ValidationError as exc:
-        return _error(request, _validation_message(exc), 422, "#form-error")
+        return error_fragment(request, _validation_message(exc), 422, "#form-error")
     except DomainError as exc:
-        return _error(request, str(exc), http_status_for(exc), "#form-error")
+        return error_fragment(request, str(exc), http_status_for(exc), "#form-error")
     context = _list_context(products, categories, category, state)
     context.update(saved=product, warning=products.has_price_warning(product))
     return templates.TemplateResponse(request, "products/_list_oob.html", context)
@@ -163,7 +154,7 @@ def show(
     try:
         return _row_response(request, categories, products.get(product_id))
     except DomainError as exc:
-        return _error(request, str(exc), http_status_for(exc), "#list-error")
+        return error_fragment(request, str(exc), http_status_for(exc), "#list-error")
 
 
 @router.get("/{product_id}/edit", response_class=HTMLResponse)
@@ -173,7 +164,7 @@ def edit(
     try:
         product = products.get(product_id)
     except DomainError as exc:
-        return _error(request, str(exc), http_status_for(exc), "#list-error")
+        return error_fragment(request, str(exc), http_status_for(exc), "#list-error")
     return _row_response(request, categories, product, "products/_row_edit.html")
 
 
@@ -189,9 +180,9 @@ def update(
     try:
         product = products.update(product_id, **form.parse().model_dump())
     except ValidationError as exc:
-        return _error(request, _validation_message(exc), 422, target)
+        return error_fragment(request, _validation_message(exc), 422, target)
     except DomainError as exc:
-        return _error(request, str(exc), http_status_for(exc), target)
+        return error_fragment(request, str(exc), http_status_for(exc), target)
     return _row_response(
         request,
         categories,
@@ -216,7 +207,7 @@ def _toggle_response(
         else:
             products.deactivate(product_id)
     except DomainError as exc:
-        return _error(request, str(exc), http_status_for(exc), "#list-error")
+        return error_fragment(request, str(exc), http_status_for(exc), "#list-error")
     context = _list_context(products, categories, category, state)
     return templates.TemplateResponse(request, "products/_list_oob.html", context)
 

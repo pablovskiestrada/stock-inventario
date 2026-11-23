@@ -6,6 +6,7 @@ from pydantic import ValidationError
 
 from app.models.category import Category
 from app.routers.deps import CategoryServiceDep, http_status_for
+from app.routers.htmx import error_fragment
 from app.schemas.category import CategoryCreate
 from app.services.errors import DomainError
 from app.templating import templates
@@ -13,16 +14,6 @@ from app.templating import templates
 router = APIRouter(prefix="/categories", tags=["categories-ui"], include_in_schema=False)
 
 NameForm = Annotated[str, Form()]
-
-
-def _error(request: Request, message: str, status: int, target: str) -> HTMLResponse:
-    """Fragmento de error: HTMX lo coloca en `target` en lugar del swap original."""
-    response = templates.TemplateResponse(
-        request, "categories/_error.html", {"message": message}, status_code=status
-    )
-    response.headers["HX-Retarget"] = target
-    response.headers["HX-Reswap"] = "innerHTML"
-    return response
 
 
 def _list_response(request: Request, service: CategoryServiceDep) -> HTMLResponse:
@@ -55,7 +46,7 @@ def create(request: Request, name: NameForm, service: CategoryServiceDep) -> HTM
     try:
         service.create(_clean_name(name))
     except DomainError as exc:
-        return _error(request, str(exc), http_status_for(exc), "#form-error")
+        return error_fragment(request, str(exc), http_status_for(exc), "#form-error")
     return _list_response(request, service)
 
 
@@ -64,7 +55,7 @@ def show(request: Request, category_id: int, service: CategoryServiceDep) -> HTM
     try:
         return _row(request, service.get(category_id))
     except DomainError as exc:
-        return _error(request, str(exc), http_status_for(exc), "#list-error")
+        return error_fragment(request, str(exc), http_status_for(exc), "#list-error")
 
 
 @router.get("/{category_id}/edit", response_class=HTMLResponse)
@@ -72,7 +63,7 @@ def edit(request: Request, category_id: int, service: CategoryServiceDep) -> HTM
     try:
         return _row(request, service.get(category_id), "categories/_row_edit.html")
     except DomainError as exc:
-        return _error(request, str(exc), http_status_for(exc), "#list-error")
+        return error_fragment(request, str(exc), http_status_for(exc), "#list-error")
 
 
 @router.put("/{category_id}", response_class=HTMLResponse)
@@ -82,7 +73,7 @@ def rename(
     try:
         return _row(request, service.rename(category_id, _clean_name(name)))
     except DomainError as exc:
-        return _error(request, str(exc), http_status_for(exc), f"#row-error-{category_id}")
+        return error_fragment(request, str(exc), http_status_for(exc), f"#row-error-{category_id}")
 
 
 @router.delete("/{category_id}", response_class=HTMLResponse)
@@ -90,5 +81,5 @@ def delete(request: Request, category_id: int, service: CategoryServiceDep) -> H
     try:
         service.delete(category_id)
     except DomainError as exc:
-        return _error(request, str(exc), http_status_for(exc), "#list-error")
+        return error_fragment(request, str(exc), http_status_for(exc), "#list-error")
     return HTMLResponse("")
