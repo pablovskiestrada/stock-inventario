@@ -5,12 +5,18 @@ from fastapi.responses import HTMLResponse
 from pydantic import ValidationError
 
 from app.models.product import Product
-from app.routers.deps import CategoryServiceDep, ProductServiceDep, http_status_for
+from app.routers.deps import (
+    CategoryServiceDep,
+    ProductServiceDep,
+    StockMovementServiceDep,
+    http_status_for,
+)
 from app.routers.htmx import error_fragment
 from app.schemas.product import ProductCreate
 from app.services.category_service import CategoryService
 from app.services.errors import DomainError
 from app.services.product_service import ProductService
+from app.services.stock_movement_service import StockMovementService
 from app.services.quantity import parse_quantity_input
 from app.templating import templates
 
@@ -77,13 +83,19 @@ def _parse_filters(category: str, state: str) -> tuple[int | None, str]:
 
 
 def _list_context(
-    products: ProductService, categories: CategoryService, category: str, state: str
+    products: ProductService,
+    categories: CategoryService,
+    movements: StockMovementService,
+    category: str,
+    state: str,
 ) -> dict[str, Any]:
     category_id, state = _parse_filters(category, state)
     all_categories = categories.list()
     found = products.list(category_id=category_id, is_active=STATES[state])
     return {
         "products": found,
+        # RN24: el stock de todo el listado sale de una sola consulta agrupada.
+        "stock_by_id": movements.current_stock_by_product([p.id for p in found]),
         "has_any_product": bool(found) or bool(products.list()),
         "categories": all_categories,
         "category_names": {c.id: c.name for c in all_categories},
@@ -92,21 +104,25 @@ def _list_context(
     }
 
 
-def _row_response(
+def row_response(
     request: Request,
     categories: CategoryService,
+    movements: StockMovementService,
     product: Product,
     template: str = "products/_row.html",
     warning: bool = False,
     saved_notice: bool = False,
+    movement_notice: str | None = None,
 ) -> HTMLResponse:
     all_categories = categories.list()
     context = {
         "product": product,
         "categories": all_categories,
         "category_names": {c.id: c.name for c in all_categories},
+        "stock_by_id": movements.current_stock_by_product([product.id]),
         "warning": warning,
         "saved_notice": saved_notice,
+        "movement_notice": movement_notice,
     }
     return templates.TemplateResponse(request, template, context)
 
@@ -116,10 +132,11 @@ def index(
     request: Request,
     products: ProductServiceDep,
     categories: CategoryServiceDep,
+    movements: StockMovementServiceDep,
     category: str = "",
     state: str = DEFAULT_STATE,
 ) -> HTMLResponse:
-    context = _list_context(products, categories, category, state)
+    context = _list_context(products, categories, movements, category, state)
     is_fragment = (
         "HX-Request" in request.headers and "HX-History-Restore-Request" not in request.headers
     )
@@ -133,6 +150,7 @@ def create(
     form: FormDep,
     products: ProductServiceDep,
     categories: CategoryServiceDep,
+    movements: StockMovementServiceDep,
     category: Annotated[str, Form()] = "",
     state: Annotated[str, Form()] = DEFAULT_STATE,
 ) -> HTMLResponse:
@@ -142,30 +160,38 @@ def create(
         return error_fragment(request, _validation_message(exc), 422, "#form-error")
     except DomainError as exc:
         return error_fragment(request, str(exc), http_status_for(exc), "#form-error")
-    context = _list_context(products, categories, category, state)
+    context = _list_context(products, categories, movements, category, state)
     context.update(saved=product, warning=products.has_price_warning(product))
     return templates.TemplateResponse(request, "products/_list_oob.html", context)
 
 
 @router.get("/{product_id}", response_class=HTMLResponse)
 def show(
-    request: Request, product_id: int, products: ProductServiceDep, categories: CategoryServiceDep
+    request: Request,
+    product_id: int,
+    products: ProductServiceDep,
+    categories: CategoryServiceDep,
+    movements: StockMovementServiceDep,
 ) -> HTMLResponse:
     try:
-        return _row_response(request, categories, products.get(product_id))
+        return row_response(request, categories, movements, products.get(product_id))
     except DomainError as exc:
         return error_fragment(request, str(exc), http_status_for(exc), "#list-error")
 
 
 @router.get("/{product_id}/edit", response_class=HTMLResponse)
 def edit(
-    request: Request, product_id: int, products: ProductServiceDep, categories: CategoryServiceDep
+    request: Request,
+    product_id: int,
+    products: ProductServiceDep,
+    categories: CategoryServiceDep,
+    movements: StockMovementServiceDep,
 ) -> HTMLResponse:
     try:
         product = products.get(product_id)
     except DomainError as exc:
         return error_fragment(request, str(exc), http_status_for(exc), "#list-error")
-    return _row_response(request, categories, product, "products/_row_edit.html")
+    return row_response(request, categories, movements, product, "products/_row_edit.html")
 
 
 @router.put("/{product_id}", response_class=HTMLResponse)
@@ -175,6 +201,7 @@ def update(
     form: FormDep,
     products: ProductServiceDep,
     categories: CategoryServiceDep,
+    movements: StockMovementServiceDep,
 ) -> HTMLResponse:
     target = f"#row-error-{product_id}"
     try:
@@ -183,9 +210,10 @@ def update(
         return error_fragment(request, _validation_message(exc), 422, target)
     except DomainError as exc:
         return error_fragment(request, str(exc), http_status_for(exc), target)
-    return _row_response(
+    return row_response(
         request,
         categories,
+        movements,
         product,
         warning=products.has_price_warning(product),
         saved_notice=True,
@@ -196,6 +224,7 @@ def _toggle_response(
     request: Request,
     products: ProductService,
     categories: CategoryService,
+    movements: StockMovementService,
     product_id: int,
     activate: bool,
     category: str,
@@ -208,7 +237,7 @@ def _toggle_response(
             products.deactivate(product_id)
     except DomainError as exc:
         return error_fragment(request, str(exc), http_status_for(exc), "#list-error")
-    context = _list_context(products, categories, category, state)
+    context = _list_context(products, categories, movements, category, state)
     return templates.TemplateResponse(request, "products/_list_oob.html", context)
 
 
@@ -218,10 +247,13 @@ def deactivate(
     product_id: int,
     products: ProductServiceDep,
     categories: CategoryServiceDep,
+    movements: StockMovementServiceDep,
     category: Annotated[str, Form()] = "",
     state: Annotated[str, Form()] = DEFAULT_STATE,
 ) -> HTMLResponse:
-    return _toggle_response(request, products, categories, product_id, False, category, state)
+    return _toggle_response(
+        request, products, categories, movements, product_id, False, category, state
+    )
 
 
 @router.post("/{product_id}/activate", response_class=HTMLResponse)
@@ -230,7 +262,10 @@ def activate(
     product_id: int,
     products: ProductServiceDep,
     categories: CategoryServiceDep,
+    movements: StockMovementServiceDep,
     category: Annotated[str, Form()] = "",
     state: Annotated[str, Form()] = DEFAULT_STATE,
 ) -> HTMLResponse:
-    return _toggle_response(request, products, categories, product_id, True, category, state)
+    return _toggle_response(
+        request, products, categories, movements, product_id, True, category, state
+    )

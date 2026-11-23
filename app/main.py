@@ -9,6 +9,7 @@ from app.routers import (
     health,
     product_views,
     products,
+    stock_movement_views,
     stock_movements,
 )
 from app.routers.deps import domain_error_response
@@ -31,6 +32,7 @@ def create_app() -> FastAPI:
     app.include_router(products.router)
     app.include_router(product_views.router)
     app.include_router(stock_movements.router)
+    app.include_router(stock_movement_views.router)
     return app
 
 

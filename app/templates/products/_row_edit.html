@@ -1,5 +1,5 @@
 <tr id="product-{{ product.id }}">
-  <td colspan="9">
+  <td colspan="10">
     <form class="form-grid" hx-put="/products/{{ product.id }}"
           hx-target="#product-{{ product.id }}" hx-swap="outerHTML">
       {% include "products/_fields.html" %}

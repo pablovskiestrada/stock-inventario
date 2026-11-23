@@ -1,0 +1,41 @@
+<tr id="product-{{ product.id }}">
+  <td colspan="10">
+    <form class="form-grid" hx-post="/products/{{ product.id }}/movements"
+          hx-target="#product-{{ product.id }}" hx-swap="outerHTML">
+      <input type="hidden" name="type" value="{{ movement_type }}">
+      <p><strong>{{ title }}</strong> · {{ product.name }} ·
+        Stock actual: {{ stock|quantity(product.unit) }} {{ product.unit }}</p>
+      <label>Cantidad ({{ product.unit }})
+        {% if movement_type == "ADJUSTMENT" %}
+        {# Sin inputmode=decimal: el teclado numérico del celular no tiene el signo «−». #}
+        <input type="text" name="quantity" required autocomplete="off" placeholder="-1,5">
+        {% else %}
+        <input type="text" name="quantity" inputmode="decimal" required autocomplete="off">
+        {% endif %}
+      </label>
+      {% if movement_type == "ADJUSTMENT" %}
+      <label>Motivo
+        <select name="reason" required>
+          <option value="">Elegí un motivo</option>
+          {% for code, label in reason_choices %}
+          <option value="{{ code }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <span class="hint">Cantidad positiva suma, negativa resta.</span>
+      {% else %}
+      <label>{{ price_label }}
+        <input type="text" name="unit_price" inputmode="decimal" required value="{{ '{:.2f}'.format(default_price) }}">
+      </label>
+      {% endif %}
+      <label>Nota{% if movement_type == "ADJUSTMENT" %} (obligatoria si el motivo es «Otro»){% endif %}
+        <input type="text" name="note" maxlength="500">
+      </label>
+      <label>Referencia <input type="text" name="reference" maxlength="100"></label>
+      <button type="submit">Registrar</button>
+      <button type="button" hx-get="/products/{{ product.id }}"
+              hx-target="#product-{{ product.id }}" hx-swap="outerHTML">Cancelar</button>
+      <span id="row-error-{{ product.id }}" class="error" role="alert"></span>
+    </form>
+  </td>
+</tr>

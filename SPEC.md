@@ -102,6 +102,7 @@ erDiagram
 - RN26. `StockMovementService.register_movement(...)` es el único punto de escritura de movimientos: todas las reglas (RN3, RN4, RN7, RN22, RN23) viven ahí, y la API (`POST /api/products/{id}/movements`, acepta los tres tipos) y las pantallas lo llaman. No hay PUT, PATCH ni DELETE de movimientos (RN5); el `GET` del historial por producto es de la rebanada 3. Además solo expone lecturas de stock (`current_stock`, `current_stock_by_product`).
 - RN27. La unidad de un producto que ya tiene movimientos no se puede cambiar: se rechaza con `UnitChangeBlockedError` (HTTP 409), aunque la unidad nueva sea más permisiva. Los movimientos guardan cantidades válidas para la unidad con que se cargaron (p. ej. 1,5 `KG` no existe en `UN`). Sin movimientos, el cambio sigue permitido (RN18 revalida `min_stock`). Mantener la misma unidad y editar el resto de los campos siempre se puede.
 - RN28. El SKU sigue siendo editable aunque el producto tenga movimientos (con la misma validación de unicidad, RN1): los movimientos apuntan al producto por `id`, no por SKU, así que renombrar el SKU no altera el libro mayor.
+- RN29. Pantallas de movimientos: cada fila de un producto **activo** ofrece «Entrada», «Salida» y «Ajuste» (un producto inactivo no ofrece ninguno, RN7). Se abren sobre la fila, sin salir del listado. **Entrada**: cantidad, costo unitario precargado con `cost_price` (editable), referencia y nota. **Salida**: la misma variante con el precio unitario de venta precargado con `sale_price` (editable). **Ajuste**: cantidad con signo (positiva suma, negativa resta), motivo de la lista fija y nota (obligatoria con `OTRO`); sin precio. Las cantidades se escriben con las reglas de RN20 (un único separador decimal, sin miles). Al registrar, la fila vuelve con el stock actual nuevo y un aviso con la cantidad interpretada y su unidad (p. ej. «Entrada registrada: 1.5 KG.»); los errores de las reglas (RN3, RN4, RN7, RN22, RN23) se muestran en la fila. El listado de productos tiene la columna «Stock actual», con la unidad, también para los inactivos. El historial de movimientos es de la rebanada 3.
 
 ## Decisiones tomadas
 - Stock calculado desde movimientos (trazabilidad total). Si hay problemas de performance, se agrega una columna cacheada más adelante.
@@ -113,7 +114,7 @@ erDiagram
 1. Categorías (1a) + productos (1b): base, servicio, API, UI.
 2. Movimientos de stock:
    - 2a. Unidades de medida y cantidades decimales en `Product` (RN17 a RN20). Sin movimientos todavía.
-   - 2b. Movimientos + cálculo de stock actual + validaciones RN3 a RN7.
+   - 2b. Movimientos + cálculo de stock actual + validaciones RN3 a RN7 (RN21 a RN29): modelo y migración, `register_movement`, API `POST`, pantallas de Entrada, Salida y Ajuste, y la columna «Stock actual». Sin historial (rebanada 3).
 3. Historial por producto.
 4. Alertas de stock bajo mínimo.
 5. Pulido: errores, empty states, README.
