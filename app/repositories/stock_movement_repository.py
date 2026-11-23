@@ -1,5 +1,6 @@
 from collections.abc import Collection
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import ColumnElement, case, func, select, type_coerce
 from sqlalchemy.orm import Session
@@ -9,18 +10,24 @@ from app.models.movement_type import MovementType
 from app.models.stock_movement import StockMovement
 
 
-def _stock_sum() -> ColumnElement[Decimal]:
-    """RN2: `suma(IN) - suma(OUT) + suma(ADJUSTMENT)` en SQL, sobre milésimas enteras (RN24).
+def _signed_quantity() -> ColumnElement[Any]:
+    """RN2: efecto de un movimiento sobre el stock: IN suma, OUT resta, ADJUSTMENT ya trae su signo.
 
-    Es la única definición de la fórmula. Los ajustes ya traen su signo (RN3), así que
-    suman tal cual. Sin movimientos da 0.
+    Es la única definición del signo: el stock actual (`_stock_sum`) y el historial la reutilizan.
     """
-    signed = case(
+    return case(
         (StockMovement.type == MovementType.IN.value, StockMovement.quantity),
         (StockMovement.type == MovementType.OUT.value, -StockMovement.quantity),
         else_=StockMovement.quantity,
     )
-    return type_coerce(func.coalesce(func.sum(signed), 0), Quantity())
+
+
+def _stock_sum() -> ColumnElement[Decimal]:
+    """RN2: `suma(IN) - suma(OUT) + suma(ADJUSTMENT)` en SQL, sobre milésimas enteras (RN24).
+
+    Los ajustes ya traen su signo (RN3), así que suman tal cual. Sin movimientos da 0.
+    """
+    return type_coerce(func.coalesce(func.sum(_signed_quantity()), 0), Quantity())
 
 
 class StockMovementRepository:
