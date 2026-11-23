@@ -10,4 +10,11 @@
 </label>
 <label>Precio de costo <input type="text" name="cost_price" inputmode="decimal" required value="{{ '{:.2f}'.format(product.cost_price) if product else '' }}"></label>
 <label>Precio de venta <input type="text" name="sale_price" inputmode="decimal" required value="{{ '{:.2f}'.format(product.sale_price) if product else '' }}"></label>
-<label>Stock mínimo <input type="number" name="min_stock" min="0" step="1" value="{{ product.min_stock if product else 0 }}"></label>
+<label>Unidad
+  <select name="unit" required>
+    {% for code, label in unit_choices %}
+    <option value="{{ code }}"{% if product and product.unit == code.value %} selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+</label>
+<label>Stock mínimo <input type="text" name="min_stock" inputmode="decimal" value="{{ product.min_stock|quantity(product.unit) if product else 0 }}"></label>

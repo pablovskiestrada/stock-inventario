@@ -1,5 +1,6 @@
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 
 HX = {"HX-Request": "true"}
@@ -19,6 +20,7 @@ def _form(category_id: int, **overrides: str) -> dict[str, Any]:
         "category_id": str(category_id),
         "cost_price": "10.00",
         "sale_price": "20.00",
+        "unit": "UN",
         "min_stock": "0",
     }
     data.update(overrides)
@@ -268,3 +270,96 @@ def test_category_delete_view_shows_in_use_error_when_it_has_products(client: Te
 def test_navigation_links_both_screens(client: TestClient) -> None:
     text = client.get("/products").text
     assert 'href="/products"' in text and 'href="/categories"' in text
+
+
+# --- Rebanada 2a: unidades y cantidades decimales (RN17-RN20) ---
+
+
+def test_form_has_unit_selector_with_all_units(client: TestClient) -> None:
+    _category(client)
+    text = client.get("/products").text
+    assert 'name="unit"' in text
+    for code in ("UN", "KG", "M", "L"):
+        assert f'<option value="{code}"' in text
+
+
+def test_listing_shows_unit_column_and_min_stock_with_its_unit(client: TestClient) -> None:
+    cat = _category(client)
+    _api_create(client, cat, sku="K", name="Harina", unit="KG", min_stock="2.5")
+    _api_create(client, cat, sku="U", name="Remera", min_stock=3)
+    text = client.get("/products").text
+    assert "<th>Unidad</th>" in text
+    assert "<td>2.5 KG</td>" in text
+    assert "<td>3 UN</td>" in text
+
+
+@pytest.mark.parametrize("typed", ["1,5", "1.5", " 1,5 "])
+def test_create_interprets_a_single_separator_as_the_decimal(
+    client: TestClient, typed: str
+) -> None:
+    cat = _category(client)
+    response = client.post("/products", data=_form(cat, unit="KG", min_stock=typed), headers=HX)
+    assert response.status_code == 200
+    assert client.get("/api/products").json()[0]["min_stock"] == "1.500"
+    assert "Stock mínimo guardado: 1.5 KG" in response.text  # el valor interpretado, con su unidad
+
+
+@pytest.mark.parametrize("typed", ["1.500,5", "1,500.5", "1.2.3"])
+def test_create_rejects_thousands_separators_with_a_clear_message(
+    client: TestClient, typed: str
+) -> None:
+    cat = _category(client)
+    response = client.post("/products", data=_form(cat, unit="KG", min_stock=typed), headers=HX)
+    assert response.status_code == 422
+    assert "sin separador de miles" in response.text
+    assert response.headers["HX-Retarget"] == "#form-error"
+    assert client.get("/api/products").json() == []
+
+
+def test_create_un_with_decimal_min_stock_shows_the_service_message(client: TestClient) -> None:
+    cat = _category(client)
+    response = client.post("/products", data=_form(cat, unit="UN", min_stock="1,5"), headers=HX)
+    assert response.status_code == 422
+    assert "solo admite cantidades enteras" in response.text
+    assert client.get("/api/products").json() == []
+
+
+def test_create_rejects_unknown_unit_and_four_decimals(client: TestClient) -> None:
+    cat = _category(client)
+    bad_unit = client.post("/products", data=_form(cat, unit="XX"), headers=HX)
+    assert bad_unit.status_code == 422 and "Elegí una unidad" in bad_unit.text
+    four = client.post("/products", data=_form(cat, unit="KG", min_stock="0,0001"), headers=HX)
+    assert four.status_code == 422 and "3 decimales" in four.text
+    assert client.get("/api/products").json() == []
+
+
+def test_edit_form_preselects_the_unit_and_shows_the_min_stock(client: TestClient) -> None:
+    cat = _category(client)
+    created = _api_create(client, cat, unit="L", min_stock="1.5")
+    text = client.get(f"/products/{created['id']}/edit", headers=HX).text
+    assert '<option value="L" selected>' in text
+    assert 'name="min_stock"' in text and 'value="1.5"' in text
+
+
+def test_update_shows_the_interpreted_min_stock_with_its_unit(client: TestClient) -> None:
+    cat = _category(client)
+    created = _api_create(client, cat)
+    response = client.put(
+        f"/products/{created['id']}", data=_form(cat, unit="M", min_stock="3,25"), headers=HX
+    )
+    assert response.status_code == 200
+    assert "Stock mínimo guardado: 3.25 M" in response.text
+    assert client.get(f"/api/products/{created['id']}").json()["min_stock"] == "3.250"
+
+
+def test_update_changing_unit_to_un_with_decimal_min_stock_targets_row_error(
+    client: TestClient,
+) -> None:
+    cat = _category(client)
+    created = _api_create(client, cat, unit="KG", min_stock="1.5")
+    response = client.put(
+        f"/products/{created['id']}", data=_form(cat, unit="UN", min_stock="1,5"), headers=HX
+    )
+    assert response.status_code == 422
+    assert response.headers["HX-Retarget"] == f"#row-error-{created['id']}"
+    assert client.get(f"/api/products/{created['id']}").json()["unit"] == "KG"

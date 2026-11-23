@@ -3,11 +3,13 @@
   <td>
     {{ product.name }}
     {% if warning %}<div class="warning" role="status">Advertencia: el precio de venta es menor al costo.</div>{% endif %}
+    {% if saved_notice %}<div class="notice" role="status">Stock mínimo guardado: {{ product.min_stock|quantity(product.unit) }} {{ product.unit }}</div>{% endif %}
   </td>
   <td>{{ category_names.get(product.category_id, "") }}</td>
   <td>{{ "{:.2f}".format(product.cost_price) }}</td>
   <td>{{ "{:.2f}".format(product.sale_price) }}</td>
-  <td>{{ product.min_stock }}</td>
+  <td>{{ product.unit }}</td>
+  <td>{{ product.min_stock|quantity(product.unit) }} {{ product.unit }}</td>
   <td>{{ "Activo" if product.is_active else "Inactivo" }}</td>
   <td>
     <button type="button" hx-get="/products/{{ product.id }}/edit"

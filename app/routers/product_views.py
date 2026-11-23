@@ -10,6 +10,7 @@ from app.schemas.product import ProductCreate
 from app.services.category_service import CategoryService
 from app.services.errors import DomainError
 from app.services.product_service import ProductService
+from app.services.quantity import parse_quantity_input
 from app.templating import templates
 
 router = APIRouter(prefix="/products", tags=["products-ui"], include_in_schema=False)
@@ -24,7 +25,11 @@ FIELD_ERRORS = {
     "category_id": "Elegí una categoría.",
     "cost_price": "El precio de costo debe ser un importe mayor o igual a 0, con hasta 2 decimales.",
     "sale_price": "El precio de venta debe ser un importe mayor o igual a 0, con hasta 2 decimales.",
-    "min_stock": "El stock mínimo debe ser un entero mayor o igual a 0.",
+    "unit": "Elegí una unidad: UN, KG, M o L.",
+    "min_stock": (
+        "El stock mínimo debe ser un número mayor o igual a 0, con hasta 3 decimales "
+        "(solo enteros si la unidad es UN)."
+    ),
 }
 
 
@@ -38,6 +43,7 @@ class ProductForm:
         category_id: Annotated[str, Form()] = "",
         cost_price: Annotated[str, Form()] = "",
         sale_price: Annotated[str, Form()] = "",
+        unit: Annotated[str, Form()] = "UN",
         min_stock: Annotated[str, Form()] = "",
     ) -> None:
         self.raw = {
@@ -47,11 +53,13 @@ class ProductForm:
             # Se acepta la coma decimal ("19,99") habitual en español.
             "cost_price": cost_price.strip().replace(",", "."),
             "sale_price": sale_price.strip().replace(",", "."),
-            "min_stock": min_stock.strip() or "0",
+            "unit": unit.strip(),
         }
+        self._min_stock = min_stock
 
     def parse(self) -> ProductCreate:
-        return ProductCreate(**self.raw)
+        # RN20: la coma o el punto (uno solo) es el decimal; los separadores de miles se rechazan.
+        return ProductCreate(**self.raw, min_stock=parse_quantity_input(self._min_stock))
 
 
 FormDep = Annotated[ProductForm, Depends()]
@@ -99,6 +107,7 @@ def _row_response(
     product: Product,
     template: str = "products/_row.html",
     warning: bool = False,
+    saved_notice: bool = False,
 ) -> HTMLResponse:
     all_categories = categories.list()
     context = {
@@ -106,6 +115,7 @@ def _row_response(
         "categories": all_categories,
         "category_names": {c.id: c.name for c in all_categories},
         "warning": warning,
+        "saved_notice": saved_notice,
     }
     return templates.TemplateResponse(request, template, context)
 
@@ -183,7 +193,11 @@ def update(
     except DomainError as exc:
         return _error(request, str(exc), http_status_for(exc), target)
     return _row_response(
-        request, categories, product, warning=products.has_price_warning(product)
+        request,
+        categories,
+        product,
+        warning=products.has_price_warning(product),
+        saved_notice=True,
     )
 
 
