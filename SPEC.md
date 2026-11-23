@@ -4,7 +4,7 @@
 Un negocio chico necesita saber cuánto stock tiene de cada producto, registrar entradas y salidas, y enterarse cuándo reponer.
 
 ## Casos de uso (v1)
-1. Crear, editar y desactivar productos (SKU, nombre, categoría, precio de costo, precio de venta, stock mínimo).
+1. Crear, editar y desactivar productos (SKU, nombre, categoría, unidad de medida, precio de costo, precio de venta, stock mínimo).
 2. Gestionar categorías (crear, renombrar, listar, eliminar).
 3. Registrar movimientos de stock: entrada (IN), salida (OUT) y ajuste (ADJUSTMENT).
 4. Ver el stock actual de cada producto.
@@ -26,6 +26,8 @@ Login y multiusuario, varios depósitos, proveedores, facturación, código de b
 | Ajuste | Corrección de stock (conteo, rotura, error) | `ADJUSTMENT` |
 | Stock actual | Suma de movimientos del producto | `current_stock` (calculado) |
 | Stock mínimo | Umbral para alertar reposición | `min_stock` |
+| Unidad de medida | Unidad en que se cuenta un producto: `UN` (unidades), `KG`, `M`, `L` | `unit` |
+| Cantidad | Valor con 3 decimales; en la base son milésimas enteras (1,5 -> 1500) | `Quantity` |
 
 ## Modelo de datos
 
@@ -47,7 +49,8 @@ erDiagram
         int category_id FK "sin ON DELETE CASCADE (RN13)"
         decimal cost_price
         decimal sale_price
-        int min_stock
+        string unit "UN | KG | M | L (RN17)"
+        quantity min_stock "milésimas enteras (RN19)"
         bool is_active
         datetime created_at
         datetime updated_at
@@ -56,7 +59,7 @@ erDiagram
         int id PK
         int product_id FK
         string type "IN | OUT | ADJUSTMENT"
-        int quantity
+        quantity quantity "milésimas enteras (RN19)"
         string note
         datetime created_at
     }
@@ -70,27 +73,35 @@ erDiagram
 - RN5. Los movimientos son inmutables: no se editan ni se borran. Los errores se corrigen con un ajuste.
 - RN6. Los productos nunca se eliminan físicamente: se desactivan (`is_active = false`) y se pueden reactivar. Desactivar y reactivar son idempotentes.
 - RN7. No se pueden registrar movimientos sobre productos inactivos.
-- RN8. `cost_price` y `sale_price` >= 0. `min_stock` >= 0. Se garantiza también con CHECK en la base.
+- RN8. `cost_price` y `sale_price` >= 0. `min_stock` >= 0 (cantidad, ver RN18). Se garantiza también con CHECK en la base.
 - RN9. Una categoría con productos (activos o inactivos) no se puede eliminar: `CategoryService.delete` lanza `CategoryInUseError`. La FK `products.category_id` (sin `ON DELETE CASCADE`) es la segunda defensa.
 - RN10. Un producto está "bajo mínimo" cuando `current_stock <= min_stock` y está activo.
 - RN11. El nombre de una categoría es obligatorio, se guarda sin espacios sobrantes y es único sin distinguir mayúsculas/minúsculas (`Ropa` = `ropa`). Se garantiza en el servicio y con un índice único sobre `lower(name)` en la base.
 - RN12. El SKU es obligatorio (máx. 50 caracteres) y el nombre del producto es obligatorio (máx. 150); ambos se guardan sin espacios en los extremos.
 - RN13. Todo producto pertenece a una categoría existente (`category_id` obligatorio, FK sin `ON DELETE CASCADE`).
-- RN14. `min_stock` es un entero >= 0 con valor por defecto 0. `is_active` es `true` por defecto. `cost_price` y `sale_price` son obligatorios.
+- RN14. `min_stock` es una cantidad >= 0 (válida para la unidad del producto, RN18) con valor por defecto 0. `is_active` es `true` por defecto. `cost_price` y `sale_price` son obligatorios.
 - RN15. El listado de productos se puede filtrar por categoría y por estado (activo / inactivo / todos).
 - RN16. Si `sale_price < cost_price`, la pantalla de guardado muestra la advertencia «El precio de venta es menor al costo». Es solo informativa: no bloquea el guardado ni en el servicio ni en la API. La decisión se calcula en el servidor (`ProductService.has_price_warning`).
+- RN17. Todo producto tiene una unidad de medida (`unit`, obligatoria, máx. 5 caracteres): `UN`, `KG`, `M` o `L`. Valor por defecto `UN`, también como `server_default` para los productos existentes. Se garantiza con CHECK `unit IN ('UN','KG','M','L')` en la base.
+- RN18. `UN` solo admite cantidades enteras; `KG`, `M` y `L` admiten hasta 3 decimales. Una cantidad nunca es negativa ni tiene más de 3 decimales ni es NaN/infinita. La regla vive en una función pura reutilizable (`validate_quantity(unit, quantity)`), usada hoy para `min_stock` y mañana para los movimientos (rebanada 2b). Si `min_stock` tiene decimales, la unidad del producto tiene que admitirlos (también al cambiar la unidad).
+- RN19. Las cantidades se guardan como entero en milésimas (`Quantity`: `Decimal` con 3 decimales en Python, `BigInteger` en la base; 1,5 -> 1500), así las sumas en SQL son exactas. Nunca `float`.
+- RN20. Entrada de cantidades en formularios: no se aceptan separadores de miles. Un único separador (coma o punto) es el decimal (`1,5` = `1.5` = 1,5; `1.500` = 1,5). Con más de un separador (`1.500,5`, `1,500.5`) se rechaza con un mensaje claro. Tras guardar, la pantalla muestra el valor interpretado con su unidad (p. ej. «1.5 KG»).
 
 ## Decisiones tomadas
 - Stock calculado desde movimientos (trazabilidad total). Si hay problemas de performance, se agrega una columna cacheada más adelante.
 - Dinero con `Numeric(12, 2)`, nunca float.
+- Cantidades como `Quantity`: milésimas enteras en la base (`BigInteger`, no `Integer`: en PostgreSQL son 32 bits y las sumas podrían desbordar), `Decimal` en Python. Nunca `float`.
 - SQLite en desarrollo; el código debe funcionar igual en PostgreSQL.
 
 ## Plan de rebanadas verticales
 1. Categorías (1a) + productos (1b): base, servicio, API, UI.
-2. Movimientos de stock + cálculo de stock actual + validaciones RN3 a RN7.
+2. Movimientos de stock:
+   - 2a. Unidades de medida y cantidades decimales en `Product` (RN17 a RN20). Sin movimientos todavía.
+   - 2b. Movimientos + cálculo de stock actual + validaciones RN3 a RN7.
 3. Historial por producto.
 4. Alertas de stock bajo mínimo.
 5. Pulido: errores, empty states, README.
 
 ## Puntos abiertos
 - Rebanada 2: revisar si el SKU debe poder editarse cuando el producto ya tiene movimientos. (En 1b el SKU es editable, con la misma validación de unicidad.)
+- Rebanada 2b: cambiar la unidad de un producto que ya tiene movimientos puede dejar cantidades inválidas (p. ej. pasar de `KG` con 1,5 a `UN`). En 2a el cambio está permitido y solo revalida `min_stock`.
