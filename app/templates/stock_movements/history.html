@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Historial · {{ product.name }} · Stock App{% endblock %}
+{% block content %}
+<p><a href="/products">← Volver a productos</a></p>
+<h1>Historial: {{ product.name }}</h1>
+<p>SKU {{ product.sku }} · Unidad: {{ product.unit }}{% if not product.is_active %} · <strong>Inactivo</strong>{% endif %}</p>
+
+{% if history.truncated %}
+<p class="notice" role="status">Se muestran los últimos {{ history.limit }} movimientos de {{ history.total }}. El saldo de cada fila corresponde a todo el historial.</p>
+{% endif %}
+
+{% if history.entries %}
+<table id="movement-history">
+  <thead>
+    <tr><th>Fecha y hora</th><th>Tipo</th><th>Cantidad</th><th>Precio unitario</th><th>Motivo</th><th>Referencia</th><th>Nota</th><th>Saldo</th></tr>
+  </thead>
+  <tbody>
+    {# RN30: del más reciente al más antiguo; el signo y el saldo vienen calculados de SQL. #}
+    {% for row in history.entries %}
+    {% set movement = row.movement %}
+    <tr id="movement-{{ movement.id }}">
+      <td>{{ movement.created_at|local_datetime }}</td>
+      <td>{{ type_labels[movement.type] }}</td>
+      <td>{{ row.signed_quantity|signed_quantity(product.unit) }} {{ product.unit }}</td>
+      <td>{% if movement.unit_price is not none %}{{ "{:.2f}".format(movement.unit_price) }}{% else %}—{% endif %}</td>
+      <td>{{ reason_labels[movement.reason] if movement.reason else "—" }}</td>
+      <td>{{ movement.reference or "—" }}</td>
+      <td>{{ movement.note or "—" }}</td>
+      <td class="balance">{{ row.balance|quantity(product.unit) }} {{ product.unit }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty">Este producto todavía no tiene movimientos.</p>
+{% endif %}
+{% endblock %}

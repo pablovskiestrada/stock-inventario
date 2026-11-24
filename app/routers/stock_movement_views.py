@@ -98,6 +98,29 @@ def _notice(movement: StockMovement, unit: str) -> str:
     return f"{NOTICES[MovementType(movement.type)]}: {quantity} {unit}."
 
 
+@router.get("", response_class=HTMLResponse)
+def history(
+    request: Request, product_id: int, movements: StockMovementServiceDep
+) -> HTMLResponse:
+    """RN32: historial del producto, página completa y de solo lectura."""
+    try:
+        result = movements.history(product_id)
+    except DomainError as exc:
+        return templates.TemplateResponse(
+            request,
+            "stock_movements/history_not_found.html",
+            {"message": str(exc)},
+            status_code=http_status_for(exc),
+        )
+    context = {
+        "history": result,
+        "product": result.product,
+        "type_labels": {kind.value: label for kind, label in TITLES.items()},
+        "reason_labels": {reason.value: label for reason, label in REASON_CHOICES},
+    }
+    return templates.TemplateResponse(request, "stock_movements/history.html", context)
+
+
 @router.get("/new", response_class=HTMLResponse)
 def new(
     request: Request,

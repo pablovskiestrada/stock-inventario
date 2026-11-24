@@ -16,6 +16,8 @@
   <td>
     <button type="button" hx-get="/products/{{ product.id }}/edit"
             hx-target="#product-{{ product.id }}" hx-swap="outerHTML">Editar</button>
+    {# RN32: el historial es de solo lectura, así que lo ofrecen también los productos inactivos. #}
+    <a class="button" href="/products/{{ product.id }}/movements">Historial</a>
     {% if product.is_active %}
     {# RN7: un producto inactivo no admite movimientos, por eso solo los activos tienen estos botones. #}
     {% for kind, label in (("IN", "Entrada"), ("OUT", "Salida"), ("ADJUSTMENT", "Ajuste")) %}
